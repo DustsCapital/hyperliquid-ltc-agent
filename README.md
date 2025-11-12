@@ -1,7 +1,7 @@
 # HyperLiquid LTC Bot
 
 Live LTC/USDT perp trading bot with:
-- $10 trades (configurable)
+- $10 trades (configurable, but hyperliquid min = $10)
 - 1x leverage
 - SMA50/200 + RSI + Trend filter
 - Persistent state (`saves/state.json`)
