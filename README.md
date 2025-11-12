@@ -9,9 +9,7 @@ Live LTC/USDT perp trading bot with:
 - Real-time dashboard
 - Clean shutdown
 
-## Setup
+## Setup (Run in terminal)
 
 ```bash
-git clone https://github.com/DustsCapital/hyperliquid-ltc-agent
-cd hyperliquid-ltc-agent
-python run.py
+git clone https://github.com/DustsCapital/hyperliquid-ltc-agent && cd hyperliquid-ltc-agent && python3 run.py 
