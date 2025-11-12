@@ -53,4 +53,8 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print(" LAUNCHING BOT...")
     print("="*60 + "\n")
-    subprocess.run([sys.executable, "main.py"])
+    
+    try:
+        subprocess.run([sys.executable, "main.py"])
+    except KeyboardInterrupt:
+        print("\nBot stopped by user. Goodbye!")
