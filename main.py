@@ -16,6 +16,9 @@ from exchange import (
 )
 from indicators import detect_cross
 
+# PRICE LOG TIMER (every 5 minutes in your code)
+last_price_log = datetime.now(timezone.utc)
+
 # SHUTDOWN CONTROL
 stop_event = threading.Event()
 
@@ -65,7 +68,7 @@ def place_sell(qty):
 
 # ------------------------------------------------------------------ bot loop
 def run_bot():
-    global position_open, last_signal, last_trend, pending_trade
+    global position_open, last_signal, last_trend, pending_trade, last_price_log
 
     log_print("=== HYPERLIQUID LTC BOT STARTED ===")
     log_print(f"API Wallet: {API_WALLET_ADDRESS}")
@@ -92,7 +95,9 @@ def run_bot():
                 continue
 
             current_price = float(df['close'].iloc[-1])
-            log_print(f"Current price: ${current_price:.2f}")
+            if (datetime.now(timezone.utc) - last_price_log).total_seconds() >= 300:
+                log_print(f"Current price: ${current_price:.2f}")
+                last_price_log = datetime.now(timezone.utc)
 
             signal, trend_str = detect_cross(df, cross_history, last_trend)
 
