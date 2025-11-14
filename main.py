@@ -16,7 +16,7 @@ from exchange import (
 )
 from indicators import detect_cross
 
-# PRICE LOG TIMER (every 5 minutes in your code)
+# PRICE LOG TIMER (every 5 minutes)
 last_price_log = datetime.now(timezone.utc)
 
 # SHUTDOWN CONTROL
@@ -95,11 +95,19 @@ def run_bot():
                 continue
 
             current_price = float(df['close'].iloc[-1])
+
+            # PRICE LOG EVERY 5 MINUTES
             if (datetime.now(timezone.utc) - last_price_log).total_seconds() >= 300:
                 log_print(f"Current price: ${current_price:.2f}")
                 last_price_log = datetime.now(timezone.utc)
 
             signal, trend_str = detect_cross(df, cross_history, last_trend)
+
+            # LOG EVERY CROSS
+            if signal == 'buy':
+                log_print("GOLDEN CROSS")
+            elif signal == 'sell':
+                log_print("DEATH CROSS")
 
             # PENDING TRADE: retry every 30s for 2 min
             if pending_trade:
