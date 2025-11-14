@@ -28,7 +28,16 @@ def detect_cross(df: pd.DataFrame, cross_history: list, last_trend: str | None):
     signal = None
 
     if cur_short > cur_long and prev_short <= prev_long:
-        cross_type = 'golden'
+        cross_history.append({
+            'type': 'golden',
+            'time': df['timestamp'].iloc[-1].strftime('%H:%M:%S'),
+            'price': df['close'].iloc[-1]
+        })
+        if len(cross_history) > MAX_CROSSES:
+            cross_history.pop(0)
+        from state import save_crosses
+        save_crosses()
+        
         if is_uptrend and df['rsi'].iloc[-1] < RSI_OVERBOUGHT:
             signal = 'buy'
 
