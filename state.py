@@ -6,6 +6,19 @@ from datetime import datetime
 SAVES_DIR = "saves"
 STATE_FILE = os.path.join(SAVES_DIR, "state.json")
 TRADES_FILE = os.path.join(SAVES_DIR, "trades.json")
+CROSS_FILE = os.path.join(SAVES_DIR, "crosses.json")
+
+# Load crosses
+if os.path.exists(CROSS_FILE):
+    with open(CROSS_FILE, 'r') as f:
+        cross_history = json.load(f)
+else:
+    cross_history = []
+
+# Save crosses
+def save_crosses():
+    with open(CROSS_FILE, 'w') as f:
+        json.dump(cross_history[MAX_CROSSES:], f, indent=2)
 
 os.makedirs(SAVES_DIR, exist_ok=True)
 
