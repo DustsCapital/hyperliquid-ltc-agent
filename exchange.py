@@ -33,7 +33,7 @@ def fetch_ohlcv():
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        print(f"Loaded {len(df)} candles | Last close: ${df['close'].iloc[-1]:.2f}")
+        # print(f"Loaded {len(df)} candles | Last close: ${df['close'].iloc[-1]:.2f}")
         return df
     except Exception as e:
         print(f"Candle fetch error: {e}")
