@@ -165,6 +165,11 @@ if __name__ == '__main__':
     bot_thread.start()
 
     try:
+        # SILENCE FLASK "GET /" LOGS
+        import logging
+        log = logging.getLogger('werkzeug')
+        log.setLevel(logging.ERROR)
+
         app.run(host='0.0.0.0', port=5000, threaded=True)
     except KeyboardInterrupt:
         print(f"\n[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Bot stopped by user.")
