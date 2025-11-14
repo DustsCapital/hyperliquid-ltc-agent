@@ -33,7 +33,6 @@ def fetch_ohlcv():
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        # print(f"Loaded {len(df)} candles | Last close: ${df['close'].iloc[-1]:.2f}")
         return df
     except Exception as e:
         print(f"Candle fetch error: {e}")
@@ -51,11 +50,16 @@ def _check_result(result, action: str):
         return False
 
 def place_buy_order(qty):
-    result = exchange.market_open(coin=SYMBOL, is_buy=True, sz=qty, leverage=1)
+    result = exchange.market_open(
+        is_buy=True,
+        sz=qty
+    )
     return _check_result(result, "BUY")
 
 def place_sell_order(qty):
-    result = exchange.market_close(coin=SYMBOL, sz=qty, leverage=1)
+    result = exchange.market_close(
+        sz=qty
+    )
     return _check_result(result, "SELL")
 
 def get_balance():
