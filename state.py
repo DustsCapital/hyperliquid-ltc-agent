@@ -17,8 +17,10 @@ else:
 
 # Save crosses
 def save_crosses():
+    # Always save full list (or last MAX_CROSSES)
+    data_to_save = cross_history[-MAX_CROSSES:] if len(cross_history) > MAX_CROSSES else cross_history
     with open(CROSS_FILE, 'w') as f:
-        json.dump(cross_history[MAX_CROSSES:], f, indent=2)
+        json.dump(data_to_save, f, indent=2)
 
 os.makedirs(SAVES_DIR, exist_ok=True)
 
