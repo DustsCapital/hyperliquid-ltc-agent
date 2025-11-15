@@ -96,6 +96,18 @@ def run_bot():
 
             current_price = float(df['close'].iloc[-1])
 
+            # TRAILING STOP
+            if position_open and trail_stop_price:
+                new_trail = current_price * 0.98
+                if new_trail > trail_stop_price:
+                    trail_stop_price = new_trail
+                    log_print(f"TRAILING STOP MOVED → ${trail_stop_price:.2f}")
+                if current_price < trail_stop_price:
+                    qty = get_ltc_position()
+                    if qty >= MIN_LTC_SELL and place_sell(qty):
+                        position_open = False
+                        trail_stop_price = None
+            
             # PRICE LOG EVERY 5 MINUTES
             if (datetime.now(timezone.utc) - last_price_log).total_seconds() >= 300:
                 log_print(f"Current price: ${current_price:.2f}")
