@@ -26,9 +26,9 @@ def detect_cross(df: pd.DataFrame, cross_history: list, last_trend: str | None):
 
     cross_type = None
     signal = None
-
+# Golden Cross
     if cur_short > cur_long and prev_short <= prev_long:
-        cross_type = 'death'
+        cross_type = 'golden'
         cross_history.append({
             'type': 'golden',
             'time': df['timestamp'].iloc[-1].strftime('%H:%M:%S'),
