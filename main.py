@@ -157,7 +157,7 @@ def run_bot():
                 'trend': trend_str,
                 'usdt_balance': get_balance(),
                 'ltc_position': get_ltc_position(),
-                'crosses': cross_history
+                'crosses': list(reversed(cross_history))  # ← REVERSE HERE
             })
             last_signal = signal or "None"
 
