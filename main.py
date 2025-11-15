@@ -101,7 +101,7 @@ def run_bot():
                 log_print(f"Current price: ${current_price:.2f}")
                 last_price_log = datetime.now(timezone.utc)
 
-            signal, trend_str = detect_cross(df, cross_history, last_trend)
+            signal, trend_str, cross_type = detect_cross(df, cross_history, last_trend)
 
             # LOG EVERY CROSS
             if signal == 'buy':
