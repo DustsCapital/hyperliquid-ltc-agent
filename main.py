@@ -149,7 +149,7 @@ def run_bot():
 
             # NEW BUY SIGNAL
             if signal == 'buy' and not position_open and not pending_trade:
-                qty = TRADE_USDT / current_price
+                qty = round(TRADE_USDT / current_price, 6)  # 6 decimals
                 if enough_usdt(TRADE_USDT)[0]:
                     pending_trade = {
                         'type': 'buy',
