@@ -24,8 +24,9 @@ def detect_cross(df: pd.DataFrame, cross_history: list, last_trend: str | None):
     is_uptrend = df['sma_long'].iloc[-1] > df['sma_long'].iloc[-1 - TREND_LOOKBACK]
     trend_str = 'Uptrend' if is_uptrend else 'Downtrend'
 
-    cross_type = None
     signal = None
+    cross_type = None
+    
 # Golden Cross
     if cur_short > cur_long and prev_short <= prev_long:
         cross_type = 'golden'
