@@ -19,6 +19,9 @@ from indicators import detect_cross
 # PRICE LOG TIMER (every 5 minutes)
 last_price_log = datetime.now(timezone.utc)
 
+# Trailing Stop-loss
+trail_stop_price = None
+
 # SHUTDOWN CONTROL
 stop_event = threading.Event()
 
@@ -44,23 +47,25 @@ def enough_usdt(required):
     return free >= needed, free
 
 def place_buy(qty):
-    global last_buy_price
+    global last_buy_price, trail_stop_price
     if place_buy_order(qty):
         last_buy_price = fetch_ohlcv().iloc[-1]['close']
-        log_print(f"BUY: {qty:.6f} LTC @ ~${last_buy_price:.2f}")
+        trail_stop_price = last_buy_price * 0.98  # 2% below entry
+        log_print(f"BUY: {qty:.6f} LTC @ ~${last_buy_price:.2f} | TRAIL: ${trail_stop_price:.2f}")
         save_state()
         save_trade("buy", qty, last_buy_price)
         return True
     return False
-
+    
 def place_sell(qty):
-    global total_profit, last_buy_price
+    global total_profit, last_buy_price, trail_stop_price
     if place_sell_order(qty):
         sell_price = fetch_ohlcv().iloc[-1]['close']
         profit = (sell_price - last_buy_price) * qty
         total_profit += profit
         log_print(f"SELL: {qty:.6f} LTC @ ~${sell_price:.2f} | Profit: ${profit:.2f} | Total: ${total_profit:.2f}")
         last_buy_price = None
+        trail_stop_price = None
         save_state()
         save_trade("sell", qty, sell_price)
         return True
