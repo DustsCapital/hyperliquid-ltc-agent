@@ -51,6 +51,7 @@ def _check_result(result, action: str):
 
 def place_buy_order(qty):
     result = exchange.market_open(
+        name=SYMBOL,
         is_buy=True,
         sz=qty
     )
@@ -58,6 +59,7 @@ def place_buy_order(qty):
 
 def place_sell_order(qty):
     result = exchange.market_close(
+        name=SYMBOL,
         sz=qty
     )
     return _check_result(result, "SELL")
