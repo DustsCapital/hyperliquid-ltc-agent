@@ -50,16 +50,9 @@ else:
     trades = []
     with open(TRADES_FILE, 'w') as f:
         json.dump(trades, f, indent=2)
-
-def save_state():
-    state = {
-        "position_open": position_open,
-        "last_buy_price": last_buy_price,
-        "total_profit": total_profit
-    }
-    with open(STATE_FILE, 'w') as f:
         json.dump(state, f, indent=2)
 
+# Save trade
 def save_trade(action, qty, price):
     trade = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -72,7 +65,7 @@ def save_trade(action, qty, price):
     with open(TRADES_FILE, 'w') as f:
         json.dump(trades, f, indent=2)
 
-cross_history = []
+# In-memory
 last_signal = "None"
 last_trend = None
 
