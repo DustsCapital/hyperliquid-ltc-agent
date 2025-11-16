@@ -40,7 +40,13 @@ HTML = """
 <div class="card"><h2>Recent Crosses</h2>
 <ul>
 {% for c in crosses %}
-  <li><strong>{{ c.type|capitalize }}</strong> @ {{ c.time }} — ${{ (c.price|round(2)) if c.price else '-.--' }}</li>
+  <li>
+    <strong>{{ c.type|capitalize }}</strong> 
+    @ {{ c.time }} — ${{ (c.price|round(2)) if c.price else '-.--' }}
+    <span style="color: {{ '#00FFFF' if c.trend == 'Uptrend' else '#FFFF00' }}; font-weight: bold;">
+      ({{ c.trend }})
+    </span>
+  </li>
 {% endfor %}
 </ul></div>
 
