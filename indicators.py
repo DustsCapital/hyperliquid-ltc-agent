@@ -46,7 +46,8 @@ def detect_cross(df: pd.DataFrame, cross_history: list, last_trend: str | None):
             cross_history.append({
                 'type': 'golden',
                 'time': current_time.strftime('%H:%M:%S'),
-                'price': df['close'].iloc[-1]
+                'price': df['close'].iloc[-1],
+                'trend': trend_str
             })
             if len(cross_history) > MAX_CROSSES:
                 cross_history.pop(0)
@@ -62,7 +63,8 @@ def detect_cross(df: pd.DataFrame, cross_history: list, last_trend: str | None):
             cross_history.append({
                 'type': 'death',
                 'time': current_time.strftime('%H:%M:%S'),
-                'price': df['close'].iloc[-1]
+                'price': df['close'].iloc[-1],
+                'trend': trend_str
             })
             if len(cross_history) > MAX_CROSSES:
                 cross_history.pop(0)
