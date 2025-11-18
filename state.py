@@ -2,6 +2,7 @@
 import json
 import os
 from datetime import datetime
+from config import MAX_CROSSES
 
 SAVES_DIR = "saves"
 STATE_FILE = os.path.join(SAVES_DIR, "state.json")
@@ -15,9 +16,7 @@ if os.path.exists(CROSS_FILE):
 else:
     cross_history = []
 
-# Save crosses
 def save_crosses():
-    # Always save full list (or last MAX_CROSSES)
     data_to_save = cross_history[-MAX_CROSSES:] if len(cross_history) > MAX_CROSSES else cross_history
     with open(CROSS_FILE, 'w') as f:
         json.dump(data_to_save, f, indent=2)
@@ -26,6 +25,7 @@ os.makedirs(SAVES_DIR, exist_ok=True)
 
 default_state = {
     "position_open": False,
+    "position_side": None,      # "long", "short", or None
     "last_buy_price": None,
     "total_profit": 0.0
 }
@@ -36,10 +36,13 @@ if os.path.exists(STATE_FILE):
     total_profit = data.get("total_profit", 0.0)
     last_buy_price = data.get("last_buy_price")
     position_open = data.get("position_open", False)
+    position_side = data.get("position_side")
+    print(f"Loaded state from {STATE_FILE}")
 else:
     total_profit = 0.0
     last_buy_price = None
     position_open = False
+    position_side = None
     with open(STATE_FILE, 'w') as f:
         json.dump(default_state, f, indent=2)
 
@@ -50,9 +53,17 @@ else:
     trades = []
     with open(TRADES_FILE, 'w') as f:
         json.dump(trades, f, indent=2)
+
+def save_state():
+    state = {
+        "position_open": position_open,
+        "position_side": position_side,
+        "last_buy_price": last_buy_price,
+        "total_profit": total_profit
+    }
+    with open(STATE_FILE, 'w') as f:
         json.dump(state, f, indent=2)
 
-# Save trade
 def save_trade(action, qty, price):
     trade = {
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -65,7 +76,6 @@ def save_trade(action, qty, price):
     with open(TRADES_FILE, 'w') as f:
         json.dump(trades, f, indent=2)
 
-# In-memory
 last_signal = "None"
 last_trend = None
 
