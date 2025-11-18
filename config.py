@@ -8,6 +8,7 @@ load_dotenv()
 EXCHANGE = "hyperliquid"
 NETWORK = "mainnet"
 SYMBOL = "LTC"
+TRADE_USDT = 10.0
 TIMEFRAME = "1m"
 MA_SHORT = 50
 MA_LONG = 200
@@ -20,11 +21,13 @@ CHECK_INTERVAL = 30
 MIN_LTC_SELL = 0.01
 MAX_CROSSES = 4
 
+# NEW: Shorting toggle
+ALLOW_SHORTS = True          # ← Set False to disable shorts again
+USE_RSI_EARLY_EXIT = True     # Optional: exit longs early if RSI >85, shorts if RSI <15
+
+# === KEYS ===
 API_WALLET_ADDRESS = os.getenv("HL_WALLET")
 API_PRIVATE_KEY = os.getenv("HL_PRIVATE_KEY")
 MAIN_WALLET = os.getenv("MAIN_WALLET")
 
 BASE_URL = constants.MAINNET_API_URL
-
-# Default trade size
-TRADE_USDT = float(os.getenv("TRADE_USDT", "10.0"))
