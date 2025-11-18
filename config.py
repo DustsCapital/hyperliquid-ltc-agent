@@ -22,7 +22,7 @@ MIN_LTC_SELL = 0.01
 MAX_CROSSES = 4
 
 # NEW: Shorting toggle
-ALLOW_SHORTS = True          # ← Set False to disable shorts again
+ALLOW_SHORTS = False          # ← Set False to disable shorts or True to enable them.
 USE_RSI_EARLY_EXIT = True     # Optional: exit longs early if RSI >85, shorts if RSI <15
 
 # === KEYS ===
