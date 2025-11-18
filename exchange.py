@@ -1,13 +1,17 @@
 # exchange.py
 from hyperliquid.info import Info
 from hyperliquid.exchange import Exchange
+import eth_account  # ← REQUIRED FOR Account.from_key
 import time
 import pandas as pd
 
-from config import API_WALLET_ADDRESS, API_PRIVATE_KEY, SYMBOL, TIMEFRAME, MAIN_WALLET, BASE_URL
+from config import API_WALLET_ADDRESS, API_PRIVATE_KEY, SYMBOL, TIMEFRAME, BASE_URL
 
 info = Info(BASE_URL, skip_ws=True)
-exchange = Exchange(wallet=API_WALLET_ADDRESS, base_url=BASE_URL)
+
+# ← 100% CORRECT WALLET CREATION (current SDK 2025)
+wallet = eth_account.Account.from_key(API_PRIVATE_KEY)
+exchange = Exchange(wallet=wallet, base_url=BASE_URL, account_address=API_WALLET_ADDRESS)
 
 def fetch_ohlcv():
     end_time = int(time.time() * 1000)
