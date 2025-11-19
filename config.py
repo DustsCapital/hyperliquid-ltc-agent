@@ -8,22 +8,40 @@ load_dotenv()
 EXCHANGE = "hyperliquid"
 NETWORK = "mainnet"
 SYMBOL = "LTC"
-TRADE_USDT = 10.0
+TRADE_USDT = 11.0
 TIMEFRAME = "1m"
 MA_SHORT = 50
 MA_LONG = 200
 TREND_LOOKBACK = 5
 RSI_PERIOD = 14
-RSI_OVERBOUGHT = 85
+RSI_OVERBOUGHT = 80
 RSI_OVERSOLD = 15
 FEE_BUFFER_PCT = 0.001
 CHECK_INTERVAL = 30
 MIN_LTC_SELL = 0.01
 MAX_CROSSES = 4
 
+
 # NEW: Shorting toggle
-ALLOW_SHORTS = False          # ← Set False to disable shorts or True to enable them.
+ALLOW_SHORTS = True          # ← Set False to disable shorts again
 USE_RSI_EARLY_EXIT = True     # Optional: exit longs early if RSI >85, shorts if RSI <15
+
+# NEW: Profit protection
+PROFIT_RATCHET_ENABLED = True          # ← Turn the whole feature on/off
+MIN_PROFIT_TO_ACTIVATE = 0.20           # $0.20 profit → switch to protection mode
+PROFIT_PROTECTION_FLOOR = 0.05          # If profit drops to $0.05 → instant exit
+
+
+# How often to log current price in terminal (in seconds)
+PRICE_LOG_INTERVAL = 120   # 300 = 5 minutes (default)
+# Examples:
+# PRICE_LOG_INTERVAL = 60    # every 1 minute
+# PRICE_LOG_INTERVAL = 900   # every 15 minutes
+# PRICE_LOG_INTERVAL = 0     # disable price logs
+
+
+
+
 
 # === KEYS ===
 API_WALLET_ADDRESS = os.getenv("HL_WALLET")
@@ -31,3 +49,4 @@ API_PRIVATE_KEY = os.getenv("HL_PRIVATE_KEY")
 MAIN_WALLET = os.getenv("MAIN_WALLET")
 
 BASE_URL = constants.MAINNET_API_URL
+
