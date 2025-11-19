@@ -6,27 +6,26 @@ from datetime import datetime, timezone, timedelta
 from dashboard import app
 from config import *
 from state import (
-    total_profit, last_buy_price, position_open,
+    total_profit, last_buy_price, position_open, position_side,
     cross_history, last_signal, last_trend, dashboard_data,
     save_state, save_trade
 )
-from exchange import (
-    get_balance, get_ltc_position, place_buy_order,
-    place_sell_order, fetch_ohlcv
-)
+from exchange import get_balance, get_ltc_position, fetch_ohlcv
 from indicators import detect_cross
+
+from exchange import exchange
+
+stop_event = threading.Event()
+
+# PENDING TRADE (2-minute window)
+pending_trade = None
 
 # PRICE LOG TIMER (every 5 minutes)
 last_price_log = datetime.now(timezone.utc)
 
-# Trailing Stop-loss
+# Trailing Stop-loss + Profit Ratchet
 trail_stop_price = None
-
-# SHUTDOWN CONTROL
-stop_event = threading.Event()
-
-# PENDING TRADE (2-minute window)
-pending_trade = None  # {'type': 'buy', 'qty': 0.1, 'price': 97.0, 'expires': datetime}
+profit_ratchet_active = False  # ← NEW: protection mode flag
 
 def signal_handler(sig, frame):
     print(f"\n[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Bot stopped by user.")
@@ -46,135 +45,207 @@ def enough_usdt(required):
     needed = required * (1 + FEE_BUFFER_PCT)
     return free >= needed, free
 
-def place_buy(qty):
+def place_long(qty):
     global last_buy_price, trail_stop_price
-    if place_buy_order(qty):
+    result = exchange.order(
+        asset=SYMBOL,
+        is_buy=True,
+        sz=qty,
+        limit_px=0,  # 0 = market price
+        order_type={"market": {}}
+    )
+    if result and result.get("status") == "ok":
         last_buy_price = fetch_ohlcv().iloc[-1]['close']
-        trail_stop_price = last_buy_price * 0.98  # 2% below entry
-        log_print(f"BUY: {qty:.6f} LTC @ ~${last_buy_price:.2f} | TRAIL: ${trail_stop_price:.2f}")
+        trail_stop_price = last_buy_price * 0.98
+        log_print(f"BUY LONG: {qty:.6f} LTC @ ~${last_buy_price:.2f} | TRAIL: ${trail_stop_price:.2f}")
         save_state()
         save_trade("buy", qty, last_buy_price)
         return True
+    else:
+        log_print(f"LONG FAILED: {result}")
     return False
-    
-def place_sell(qty):
-    global total_profit, last_buy_price, trail_stop_price
-    if place_sell_order(qty):
-        sell_price = fetch_ohlcv().iloc[-1]['close']
-        profit = (sell_price - last_buy_price) * qty
+
+def place_short(qty):
+    global last_buy_price, trail_stop_price
+    result = exchange.order(
+        asset=SYMBOL,
+        is_buy=False,
+        sz=qty,
+        limit_px=0,
+        order_type={"market": {}}
+    )
+    if result and result.get("status") == "ok":
+        last_buy_price = fetch_ohlcv().iloc[-1]['close']
+        trail_stop_price = last_buy_price * 1.02
+        log_print(f"OPEN SHORT: {qty:.6f} LTC @ ~${last_buy_price:.2f} | TRAIL: ${trail_stop_price:.2f}")
+        save_state()
+        save_trade("short", qty, last_buy_price)
+        return True
+    else:
+        log_print(f"SHORT FAILED: {result}")
+    return False
+
+def close_position():
+    global total_profit, last_buy_price, trail_stop_price, profit_ratchet_active
+    qty = get_ltc_position()
+    if qty < MIN_LTC_SELL:
+        return False
+
+    result = exchange.market_close(name=SYMBOL, sz=qty)
+    if result and result.get("status") == "ok":
+        current_price = fetch_ohlcv().iloc[-1]['close']
+        if position_side == "long":
+            profit = (current_price - last_buy_price) * qty
+            log_print(f"SELL LONG: {qty:.6f} LTC @ ~${current_price:.2f} | Profit: ${profit:.2f} | Total: ${total_profit + profit:.2f}")
+        else:
+            profit = (last_buy_price - current_price) * qty
+            log_print(f"COVER SHORT: {qty:.6f} LTC @ ~${current_price:.2f} | Profit: ${profit:.2f} | Total: ${total_profit + profit:.2f}")
         total_profit += profit
-        log_print(f"SELL: {qty:.6f} LTC @ ~${sell_price:.2f} | Profit: ${profit:.2f} | Total: ${total_profit:.2f}")
         last_buy_price = None
         trail_stop_price = None
+        profit_ratchet_active = False  # ← reset on close
         save_state()
-        save_trade("sell", qty, sell_price)
+        save_trade("sell" if position_side == "long" else "cover", qty, current_price)
         return True
+    else:
+        log_print(f"CLOSE FAILED: {result}")
     return False
 
 # ------------------------------------------------------------------ bot loop
 def run_bot():
-    global position_open, last_signal, last_trend, pending_trade, last_price_log
+    global position_open, position_side, last_signal, last_trend, pending_trade, trail_stop_price, last_price_log, profit_ratchet_active
 
-    log_print("=== HYPERLIQUID LTC BOT STARTED ===")
+    log_print("=== HYPERLIQUID LTC BOT STARTED (LONGS + SHORTS + PROFIT RATCHET) ===")
     log_print(f"API Wallet: {API_WALLET_ADDRESS}")
     log_print(f"Initial USDC: ${get_balance():.2f}")
 
-    # RECOVER POSITION
+    # Recover position
     actual_ltc = get_ltc_position()
-    if actual_ltc > 0.001 and not position_open:
-        log_print(f"RECOVERED OPEN POSITION: {actual_ltc:.6f} LTC")
+    if actual_ltc > 0.001:
         position_open = True
+        position_side = "long"
         last_buy_price = fetch_ohlcv().iloc[-1]['close']
-    elif actual_ltc == 0 and position_open:
-        log_print("CLOSED POSITION DETECTED — resetting")
-        position_open = False
-        last_buy_price = None
-        save_state()
+        trail_stop_price = last_buy_price * 0.98
+        log_print(f"RECOVERED LONG: {actual_ltc:.6f} LTC")
 
     while not stop_event.is_set():
         try:
             df = fetch_ohlcv()
             if df.empty or len(df) < MA_LONG:
-                log_print("Waiting for sufficient candle data...")
                 time.sleep(CHECK_INTERVAL)
                 continue
 
             current_price = float(df['close'].iloc[-1])
+            signal, trend_str, cross_type = detect_cross(df, cross_history, last_trend)
 
-            # TRAILING STOP
-            if position_open and trail_stop_price:
-                new_trail = current_price * 0.98
-                if new_trail > trail_stop_price:
-                    trail_stop_price = new_trail
-                    log_print(f"TRAILING STOP MOVED → ${trail_stop_price:.2f}")
-                if current_price < trail_stop_price:
-                    qty = get_ltc_position()
-                    if qty >= MIN_LTC_SELL and place_sell(qty):
-                        position_open = False
-                        trail_stop_price = None
-            
-            # PRICE LOG EVERY 5 MINUTES
-            if (datetime.now(timezone.utc) - last_price_log).total_seconds() >= 300:
+            # LOG EVERY CROSS WITH POSITION STATUS
+            if cross_type == 'golden':
+                status = "OPEN" if position_open else "FLAT"
+                log_print(f"GOLDEN CROSS — Position: {status}")
+            elif cross_type == 'death':
+                status = "OPEN" if position_open else "FLAT"
+                log_print(f"DEATH CROSS — Position: {status}")
+
+            qty = abs(get_ltc_position()) if position_open else 0
+
+            # PROFIT RATCHET — your exact request
+            if PROFIT_RATCHET_ENABLED and position_open and qty > 0:
+                unrealized = (current_price - last_buy_price) * qty if position_side == "long" else (last_buy_price - current_price) * qty
+
+                if unrealized >= MIN_PROFIT_TO_ACTIVATE:
+                    profit_ratchet_active = True
+                    log_print(f"RATCHET ACTIVATED — Profit ${unrealized:.2f} ≥ ${MIN_PROFIT_TO_ACTIVATE}")
+
+                if profit_ratchet_active and unrealized <= PROFIT_PROTECTION_FLOOR:
+                    log_print(f"RATCHET FLOOR HIT — Closing at +${unrealized:.2f}")
+                    close_position()
+                    profit_ratchet_active = False
+                    continue  # skip trailing stop this candle
+
+            # Normal trailing stop (only if ratchet not active)
+            if position_open and trail_stop_price and not profit_ratchet_active:
+                if position_side == "long":
+                    new_trail = current_price * 0.98
+                    if new_trail > trail_stop_price:
+                        trail_stop_price = new_trail
+                    if current_price <= trail_stop_price:
+                        close_position()
+                        profit_ratchet_active = False
+                else:
+                    new_trail = current_price * 1.02
+                    if new_trail < trail_stop_price:
+                        trail_stop_price = new_trail
+                    if current_price >= trail_stop_price:
+                        close_position()
+                        profit_ratchet_active = False
+
+            # Price log
+            if PRICE_LOG_INTERVAL > 0 and (datetime.now(timezone.utc) - last_price_log).total_seconds() >= PRICE_LOG_INTERVAL:
                 log_print(f"Current price: ${current_price:.2f}")
                 last_price_log = datetime.now(timezone.utc)
 
-            signal, trend_str, cross_type = detect_cross(df, cross_history, last_trend)
-
-            # LOG EVERY CROSS
-            if signal == 'buy':
-                log_print("GOLDEN CROSS")
-            elif signal == 'sell':
-                log_print("DEATH CROSS")
-
-            # PENDING TRADE: retry every 30s for 2 min
+            # Pending trade handling
             if pending_trade:
-                if datetime.now() > pending_trade['expires']:
+                if datetime.now(timezone.utc) > pending_trade['expires']:
                     log_print("Trade window expired")
                     pending_trade = None
-                elif signal == 'sell' and pending_trade['type'] == 'buy':
-                    log_print("Death cross — canceling pending buy")
+                elif pending_trade['type'] == 'long' and signal == 'sell':
+                    log_print("Death cross — canceling pending long")
                     pending_trade = None
-                elif not position_open and pending_trade['type'] == 'buy':
+                elif pending_trade['type'] == 'short' and signal == 'buy':
+                    log_print("Golden cross — canceling pending short")
+                    pending_trade = None
+                elif not position_open:
                     qty = pending_trade['qty']
-                    if enough_usdt(TRADE_USDT)[0] and place_buy(qty):
+                    success = place_long(qty) if pending_trade['type'] == 'long' else place_short(qty)
+                    if success:
                         position_open = True
+                        position_side = pending_trade['type']
                         pending_trade = None
 
-            # TREND CHANGE
+            # Trend change
             if last_trend != trend_str:
                 color = "\033[93m" if trend_str == "Downtrend" else "\033[92m"
                 reset = "\033[0m"
                 print(f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] TREND CHANGE → {color}{trend_str}{reset}")
                 last_trend = trend_str
 
-            # NEW BUY SIGNAL
+            # New signals
             if signal == 'buy' and not position_open and not pending_trade:
-                qty = round(TRADE_USDT / current_price, 6)  # 6 decimals
+                qty = round(TRADE_USDT / current_price, 6)
                 if enough_usdt(TRADE_USDT)[0]:
                     pending_trade = {
-                        'type': 'buy',
+                        'type': 'long',
                         'qty': qty,
-                        'price': current_price,
-                        'expires': datetime.now() + timedelta(minutes=2)
+                        'expires': datetime.now(timezone.utc) + timedelta(minutes=2)
                     }
-                    log_print(f"GOLDEN CROSS — PENDING BUY in 2 min window")
-                else:
-                    log_print("BUY signal but low USDC")
+                    log_print("GOLDEN CROSS — PENDING LONG")
 
-            # SELL SIGNAL
-            elif signal == 'sell' and position_open:
-                qty = get_ltc_position()
-                if qty >= MIN_LTC_SELL and place_sell(qty):
+            elif signal == 'short' and ALLOW_SHORTS and not position_open and not pending_trade:
+                qty = round(TRADE_USDT / current_price, 6)
+                if enough_usdt(TRADE_USDT)[0]:
+                    pending_trade = {
+                        'type': 'short',
+                        'qty': qty,
+                        'expires': datetime.now(timezone.utc) + timedelta(minutes=2)
+                    }
+                    log_print("DEATH CROSS — PENDING SHORT")
+
+            # Opposite cross closes position
+            if position_open:
+                if (position_side == "long" and signal == 'sell') or (position_side == "short" and signal == 'buy'):
+                    close_position()
                     position_open = False
+                    position_side = None
 
-            # DASHBOARD UPDATE
+            # Dashboard
             dashboard_data.update({
                 'last_update': datetime.now(timezone.utc).strftime('%H:%M:%S'),
                 'price': current_price,
                 'trend': trend_str,
                 'usdt_balance': get_balance(),
-                'ltc_position': get_ltc_position(),
-                'crosses': list(reversed(cross_history))  # ← REVERSE HERE
+                'ltc_position': abs(get_ltc_position()),
+                'crosses': list(reversed(cross_history))
             })
             last_signal = signal or "None"
 
@@ -185,22 +256,11 @@ def run_bot():
                 log_print(f"CRASH: {e}")
             time.sleep(10)
 
-# ------------------------------------------------------------------ entry
 if __name__ == '__main__':
     bot_thread = threading.Thread(target=run_bot, daemon=False)
     bot_thread.start()
 
-    try:
-        # SILENCE FLASK "GET /" LOGS
-        import logging
-        log = logging.getLogger('werkzeug')
-        log.setLevel(logging.ERROR)
-
-        app.run(host='0.0.0.0', port=5000, threaded=True)
-    except KeyboardInterrupt:
-        print(f"\n[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Bot stopped by user.")
-        stop_event.set()
-        bot_thread.join(timeout=2)
-        print("Process terminated.")
-        import os
-        os._exit(0)
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    app.run(host='0.0.0.0', port=5000, threaded=True)
