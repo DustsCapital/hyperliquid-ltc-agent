@@ -48,11 +48,12 @@ def enough_usdt(required):
 def place_long(qty):
     global last_buy_price, trail_stop_price
     result = exchange.order(
-        asset=SYMBOL,
+        coin=SYMBOL,
         is_buy=True,
         sz=qty,
-        limit_px=0,  # 0 = market price
-        order_type={"market": {}}
+        limit_px=0,                     # market price
+        order_type={"market": {}},
+        reduce_only=False
     )
     if result and result.get("status") == "ok":
         last_buy_price = fetch_ohlcv().iloc[-1]['close']
@@ -68,11 +69,12 @@ def place_long(qty):
 def place_short(qty):
     global last_buy_price, trail_stop_price
     result = exchange.order(
-        asset=SYMBOL,
+        coin=SYMBOL,
         is_buy=False,
         sz=qty,
         limit_px=0,
-        order_type={"market": {}}
+        order_type={"market": {}},
+        reduce_only=False
     )
     if result and result.get("status") == "ok":
         last_buy_price = fetch_ohlcv().iloc[-1]['close']
@@ -83,6 +85,34 @@ def place_short(qty):
         return True
     else:
         log_print(f"SHORT FAILED: {result}")
+    return False
+
+def close_position():
+    global total_profit, last_buy_price, trail_stop_price
+    qty = get_ltc_position()
+    if qty < MIN_LTC_SELL:
+        return False
+
+    result = exchange.order(
+        coin=SYMBOL,
+        is_buy=(position_side == "short"),  # cover short = buy
+        sz=qty,
+        limit_px=0,
+        order_type={"market": {}},
+        reduce_only=True
+    )
+    if result and result.get("status") == "ok":
+        current_price = fetch_ohlcv().iloc[-1]['close']
+        profit = (current_price - last_buy_price) * qty if position_side == "long" else (last_buy_price - current_price) * qty
+        total_profit += profit
+        log_print(f"{'SELL LONG' if position_side == 'long' else 'COVER SHORT'}: {qty:.6f} LTC @ ~${current_price:.2f} | Profit: ${profit:.2f} | Total: ${total_profit:.2f}")
+        last_buy_price = None
+        trail_stop_price = None
+        save_state()
+        save_trade("sell" if position_side == "long" else "cover", qty, current_price)
+        return True
+    else:
+        log_print(f"CLOSE FAILED: {result}")
     return False
 
 def close_position():
