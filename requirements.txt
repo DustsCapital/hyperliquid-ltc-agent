@@ -1,4 +1,5 @@
-hyperliquid-python-sdk==0.21.0
+hyperliquid-python-sdk>=0.21.0
 pandas
 Flask
 python-dotenv
+annotated_types<0.7.0,>=0.4.0
