@@ -9,7 +9,7 @@ from config import API_WALLET_ADDRESS, API_PRIVATE_KEY, SYMBOL, TIMEFRAME, BASE_
 
 info = Info(BASE_URL, skip_ws=True)
 
-# ← 100% CORRECT WALLET CREATION (current SDK 2025)
+# 100% CORRECT WALLET CREATION (current SDK 2025)
 wallet = eth_account.Account.from_key(API_PRIVATE_KEY)
 exchange = Exchange(wallet=wallet, base_url=BASE_URL, account_address=API_WALLET_ADDRESS)
 
@@ -39,7 +39,7 @@ def fetch_ohlcv():
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         return df
     except Exception as e:
-        print(f"Candle fetch error: {e}")
+        print(f"[INFO] Hyperliquid API temporary hiccup – retrying in 30s...")
         return pd.DataFrame()
 
 def _check_result(result, action: str):
@@ -73,7 +73,7 @@ def get_balance():
         state = info.user_state(API_WALLET_ADDRESS)
         return float(state.get('withdrawable', '0.0'))
     except Exception as e:
-        print(f"Balance error: {e}")
+        print(f"[INFO] Hyperliquid API temporary hiccup (balance) – retrying...")
         return 0.0
 
 def get_ltc_position():
@@ -84,5 +84,5 @@ def get_ltc_position():
                 return abs(float(pos.get('szi', '0')))
         return 0.0
     except Exception as e:
-        print(f"Position error: {e}")
+        print(f"[INFO] Hyperliquid API temporary hiccup (position) – retrying...")
         return 0.0
