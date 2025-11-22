@@ -25,7 +25,7 @@ last_price_log = datetime.now(timezone.utc)
 
 # Trailing Stop-loss + Profit Ratchet
 trail_stop_price = None
-profit_ratchet_active = False  # ← NEW: protection mode flag
+profit_ratchet_active = False
 
 def signal_handler(sig, frame):
     print(f"\n[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Bot stopped by user.")
@@ -47,14 +47,7 @@ def enough_usdt(required):
 
 def place_long(qty):
     global last_buy_price, trail_stop_price
-    result = exchange.order(
-        coin=SYMBOL,
-        is_buy=True,
-        sz=qty,
-        limit_px=0,                     # market price
-        order_type={"market": {}},
-        reduce_only=False
-    )
+    result = exchange.market_open(name=SYMBOL, is_buy=True, sz=qty)
     if result and result.get("status") == "ok":
         last_buy_price = fetch_ohlcv().iloc[-1]['close']
         trail_stop_price = last_buy_price * 0.98
@@ -64,18 +57,11 @@ def place_long(qty):
         return True
     else:
         log_print(f"LONG FAILED: {result}")
-    return False
+        return False
 
 def place_short(qty):
     global last_buy_price, trail_stop_price
-    result = exchange.order(
-        coin=SYMBOL,
-        is_buy=False,
-        sz=qty,
-        limit_px=0,
-        order_type={"market": {}},
-        reduce_only=False
-    )
+    result = exchange.market_open(name=SYMBOL, is_buy=False, sz=qty)
     if result and result.get("status") == "ok":
         last_buy_price = fetch_ohlcv().iloc[-1]['close']
         trail_stop_price = last_buy_price * 1.02
@@ -85,7 +71,7 @@ def place_short(qty):
         return True
     else:
         log_print(f"SHORT FAILED: {result}")
-    return False
+        return False
 
 def close_position():
     global total_profit, last_buy_price, trail_stop_price
@@ -93,14 +79,7 @@ def close_position():
     if qty < MIN_LTC_SELL:
         return False
 
-    result = exchange.order(
-        coin=SYMBOL,
-        is_buy=(position_side == "short"),  # cover short = buy
-        sz=qty,
-        limit_px=0,
-        order_type={"market": {}},
-        reduce_only=True
-    )
+    result = exchange.market_close(name=SYMBOL, sz=qty)
     if result and result.get("status") == "ok":
         current_price = fetch_ohlcv().iloc[-1]['close']
         profit = (current_price - last_buy_price) * qty if position_side == "long" else (last_buy_price - current_price) * qty
@@ -113,33 +92,7 @@ def close_position():
         return True
     else:
         log_print(f"CLOSE FAILED: {result}")
-    return False
-
-def close_position():
-    global total_profit, last_buy_price, trail_stop_price, profit_ratchet_active
-    qty = get_ltc_position()
-    if qty < MIN_LTC_SELL:
         return False
-
-    result = exchange.market_close(name=SYMBOL, sz=qty)
-    if result and result.get("status") == "ok":
-        current_price = fetch_ohlcv().iloc[-1]['close']
-        if position_side == "long":
-            profit = (current_price - last_buy_price) * qty
-            log_print(f"SELL LONG: {qty:.6f} LTC @ ~${current_price:.2f} | Profit: ${profit:.2f} | Total: ${total_profit + profit:.2f}")
-        else:
-            profit = (last_buy_price - current_price) * qty
-            log_print(f"COVER SHORT: {qty:.6f} LTC @ ~${current_price:.2f} | Profit: ${profit:.2f} | Total: ${total_profit + profit:.2f}")
-        total_profit += profit
-        last_buy_price = None
-        trail_stop_price = None
-        profit_ratchet_active = False  # ← reset on close
-        save_state()
-        save_trade("sell" if position_side == "long" else "cover", qty, current_price)
-        return True
-    else:
-        log_print(f"CLOSE FAILED: {result}")
-    return False
 
 # ------------------------------------------------------------------ bot loop
 def run_bot():
@@ -178,7 +131,7 @@ def run_bot():
 
             qty = abs(get_ltc_position()) if position_open else 0
 
-            # PROFIT RATCHET — your exact request
+            # PROFIT RATCHET
             if PROFIT_RATCHET_ENABLED and position_open and qty > 0:
                 unrealized = (current_price - last_buy_price) * qty if position_side == "long" else (last_buy_price - current_price) * qty
 
@@ -190,9 +143,9 @@ def run_bot():
                     log_print(f"RATCHET FLOOR HIT — Closing at +${unrealized:.2f}")
                     close_position()
                     profit_ratchet_active = False
-                    continue  # skip trailing stop this candle
+                    continue
 
-            # Normal trailing stop (only if ratchet not active)
+            # Normal trailing stop
             if position_open and trail_stop_price and not profit_ratchet_active:
                 if position_side == "long":
                     new_trail = current_price * 0.98
