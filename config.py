@@ -12,7 +12,7 @@ TRADE_USDT = 11.0
 TIMEFRAME = "1m"
 MA_SHORT = 50
 MA_LONG = 200
-TREND_LOOKBACK = 5
+TREND_LOOKBACK = 10
 RSI_PERIOD = 14
 RSI_OVERBOUGHT = 80
 RSI_OVERSOLD = 15
@@ -29,7 +29,7 @@ USE_RSI_EARLY_EXIT = True     # Optional: exit longs early if RSI >85, shorts if
 # NEW: Profit protection
 PROFIT_RATCHET_ENABLED = True          # ← Turn the whole feature on/off
 MIN_PROFIT_TO_ACTIVATE = 0.20           # $0.20 profit → switch to protection mode
-PROFIT_PROTECTION_FLOOR = 0.05          # If profit drops to $0.05 → instant exit
+PROFIT_PROTECTION_FLOOR = 0.05        # Keep 60% of peak profit (e.g., +$0.40 → close if drops below +$0.24)
 
 
 # How often to log current price in terminal (in seconds)
@@ -49,4 +49,3 @@ API_PRIVATE_KEY = os.getenv("HL_PRIVATE_KEY")
 MAIN_WALLET = os.getenv("MAIN_WALLET")
 
 BASE_URL = constants.MAINNET_API_URL
-
