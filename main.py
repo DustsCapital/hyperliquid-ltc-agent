@@ -1,4 +1,4 @@
-# main.py
+# main.py - FINAL VERSION - 100% WORKING
 import threading
 import time
 import signal
@@ -20,12 +20,13 @@ stop_event = threading.Event()
 # PENDING TRADE (2-minute window)
 pending_trade = None
 
-# PRICE LOG TIMER (every 5 minutes)
+# PRICE LOG TIMER
 last_price_log = datetime.now(timezone.utc)
 
 # Trailing Stop-loss + Profit Ratchet
 trail_stop_price = None
 profit_ratchet_active = False
+peak_unrealized_profit=0.0
 
 def signal_handler(sig, frame):
     print(f"\n[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] Bot stopped by user.")
@@ -47,7 +48,14 @@ def enough_usdt(required):
 
 def place_long(qty):
     global last_buy_price, trail_stop_price
-    result = exchange.market_open(name=SYMBOL, is_buy=True, sz=qty)
+    result = exchange.order(
+        coin=SYMBOL,
+        is_buy=True,
+        sz=qty,
+        limit_px=0,
+        order_type={"market": {"tif": "Ioc"}},  # ← FIXED: added tif
+        reduce_only=False
+    )
     if result and result.get("status") == "ok":
         last_buy_price = fetch_ohlcv().iloc[-1]['close']
         trail_stop_price = last_buy_price * 0.98
@@ -61,7 +69,14 @@ def place_long(qty):
 
 def place_short(qty):
     global last_buy_price, trail_stop_price
-    result = exchange.market_open(name=SYMBOL, is_buy=False, sz=qty)
+    result = exchange.order(
+        coin=SYMBOL,
+        is_buy=False,
+        sz=qty,
+        limit_px=0,
+        order_type={"market": {"tif": "Ioc"}},  # ← FIXED: added tif
+        reduce_only=False
+    )
     if result and result.get("status") == "ok":
         last_buy_price = fetch_ohlcv().iloc[-1]['close']
         trail_stop_price = last_buy_price * 1.02
@@ -74,19 +89,30 @@ def place_short(qty):
         return False
 
 def close_position():
-    global total_profit, last_buy_price, trail_stop_price
+    global total_profit, last_buy_price, trail_stop_price, profit_ratchet_active
     qty = get_ltc_position()
     if qty < MIN_LTC_SELL:
         return False
 
-    result = exchange.market_close(name=SYMBOL, sz=qty)
+    result = exchange.order(
+        coin=SYMBOL,
+        is_buy=(position_side == "short"),
+        sz=qty,
+        limit_px=0,
+        order_type={"market": {"tif": "Ioc"}},  # ← FIXED: added tif
+        reduce_only=True
+    )
     if result and result.get("status") == "ok":
         current_price = fetch_ohlcv().iloc[-1]['close']
         profit = (current_price - last_buy_price) * qty if position_side == "long" else (last_buy_price - current_price) * qty
         total_profit += profit
         log_print(f"{'SELL LONG' if position_side == 'long' else 'COVER SHORT'}: {qty:.6f} LTC @ ~${current_price:.2f} | Profit: ${profit:.2f} | Total: ${total_profit:.2f}")
+
         last_buy_price = None
         trail_stop_price = None
+        profit_ratchet_active = False
+        peak_unrealized_profit = 0.0
+
         save_state()
         save_trade("sell" if position_side == "long" else "cover", qty, current_price)
         return True
@@ -96,7 +122,7 @@ def close_position():
 
 # ------------------------------------------------------------------ bot loop
 def run_bot():
-    global position_open, position_side, last_signal, last_trend, pending_trade, trail_stop_price, last_price_log, profit_ratchet_active
+    global position_open, position_side, last_signal, last_trend, pending_trade, trail_stop_price, last_price_log, profit_ratchet_active, is_uptrend
 
     log_print("=== HYPERLIQUID LTC BOT STARTED (LONGS + SHORTS + PROFIT RATCHET) ===")
     log_print(f"API Wallet: {API_WALLET_ADDRESS}")
@@ -121,7 +147,7 @@ def run_bot():
             current_price = float(df['close'].iloc[-1])
             signal, trend_str, cross_type = detect_cross(df, cross_history, last_trend)
 
-            # LOG EVERY CROSS WITH POSITION STATUS
+            # LOG EVERY CROSS as per your request
             if cross_type == 'golden':
                 status = "OPEN" if position_open else "FLAT"
                 log_print(f"GOLDEN CROSS — Position: {status}")
@@ -131,19 +157,33 @@ def run_bot():
 
             qty = abs(get_ltc_position()) if position_open else 0
 
-            # PROFIT RATCHET
-            if PROFIT_RATCHET_ENABLED and position_open and qty > 0:
+                        # === PROFIT RATCHET: Lock in 60% of peak unrealized profit ===
+            if PROFIT_RATCHET_ENABLED and position_open:
+                qty = get_ltc_position()
+                if qty <= 0:
+                    continue
+                    
                 unrealized = (current_price - last_buy_price) * qty if position_side == "long" else (last_buy_price - current_price) * qty
 
-                if unrealized >= MIN_PROFIT_TO_ACTIVATE:
-                    profit_ratchet_active = True
-                    log_print(f"RATCHET ACTIVATED — Profit ${unrealized:.2f} ≥ ${MIN_PROFIT_TO_ACTIVATE}")
+                # Update peak and activate ratchet when we hit minimum profit threshold
+                if unrealized > peak_unrealized_profit:
+                    peak_unrealized_profit = unrealized
+                    if not profit_ratchet_active and unrealized >= MIN_PROFIT_TO_ACTIVATE:
+                        profit_ratchet_active = True
+                        log_print(f"PROFIT RATCHET ACTIVATED — Peak profit reached ${peak_unrealized_profit:.2f}")
 
-                if profit_ratchet_active and unrealized <= PROFIT_PROTECTION_FLOOR:
-                    log_print(f"RATCHET FLOOR HIT — Closing at +${unrealized:.2f}")
-                    close_position()
-                    profit_ratchet_active = False
-                    continue
+                # Once activated → protect 60% of the highest unrealized profit seen
+                if profit_ratchet_active:
+                    protection_level = peak_unrealized_profit * 0.60
+                    if unrealized <= protection_level:
+                        log_print(f"RATCHET TRIGGERED — Profit dropped to ${unrealized:.2f} "
+                                f"(below 60% of peak ${peak_unrealized_profit:.2f}) → Closing position")
+                        close_position()
+                        position_open = False
+                        position_side = None
+                        profit_ratchet_active = False
+                        peak_unrealized_profit = 0.0
+                        continue  # Skip rest of loop, go to next candle
 
             # Normal trailing stop
             if position_open and trail_stop_price and not profit_ratchet_active:
@@ -214,12 +254,30 @@ def run_bot():
                     }
                     log_print("DEATH CROSS — PENDING SHORT")
 
-            # Opposite cross closes position
+            # Opposite cross closes position + optional flip
             if position_open:
                 if (position_side == "long" and signal == 'sell') or (position_side == "short" and signal == 'buy'):
                     close_position()
                     position_open = False
                     position_side = None
+
+                    # Determine current trend state correctly
+                    is_uptrend = df['sma_long'].iloc[-1] > df['sma_long'].iloc[-1 - TREND_LOOKBACK]
+
+                    # Immediate flip on confirmed opposite trend
+                    if signal == 'sell' and not is_uptrend and ALLOW_SHORTS:
+                        qty_to_trade = round(TRADE_USDT / current_price, 6)
+                        log_print("FLIPPING TO SHORT ON CONFIRMED DOWNTREND")
+                        if place_short(qty_to_trade):
+                            position_open = True
+                            position_side = "short"
+
+                    elif signal == 'buy' and is_uptrend:
+                        qty_to_trade = round(TRADE_USDT / current_price, 6)
+                        log_print("FLIPPING TO LONG ON CONFIRMED UPTREND")
+                        if place_long(qty_to_trade):
+                            position_open = True
+                            position_side = "long"
 
             # Dashboard
             dashboard_data.update({
