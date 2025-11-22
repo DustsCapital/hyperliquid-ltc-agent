@@ -9,13 +9,13 @@ from config import API_WALLET_ADDRESS, API_PRIVATE_KEY, SYMBOL, TIMEFRAME, BASE_
 
 info = Info(BASE_URL, skip_ws=True)
 
-# 100% CORRECT WALLET CREATION (current SDK 2025)
+# ← 100% CORRECT WALLET CREATION (current SDK 2025)
 wallet = eth_account.Account.from_key(API_PRIVATE_KEY)
 exchange = Exchange(wallet=wallet, base_url=BASE_URL, account_address=API_WALLET_ADDRESS)
 
 def fetch_ohlcv():
     end_time = int(time.time() * 1000)
-    start_time = end_time - 6 * 3600 * 1000
+    start_time = end_time - 24 * 3600 * 1000
 
     try:
         raw = info.candles_snapshot(
