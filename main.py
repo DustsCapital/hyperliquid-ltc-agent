@@ -35,7 +35,7 @@ def enough_usdt(required):
     return free >= needed, free
 
 # FIXED SIZE — NO MORE FLOATING POINT GARBAGE
-FIXED_QTY = 0.20  # ~$15 at current price — perfect size
+FIXED_QTY = 0.20  # Configure for yourself
 
 # FINAL WORKING ORDER FUNCTIONS — BULLETPROOF
 def place_long(qty):
