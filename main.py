@@ -1,8 +1,7 @@
-# main.py - FINAL LIVE VERSION - NOV 2025
+# main.py - FINAL LIVE VERSION - FIXED SIZE - NO MORE "invalid size" - NOV 2025
 import threading
 import time
 import signal
-import math
 from datetime import datetime, timezone, timedelta
 from dashboard import app
 from config import *
@@ -35,13 +34,10 @@ def enough_usdt(required):
     needed = required * (1 + FEE_BUFFER_PCT)
     return free >= needed, free
 
-def get_minimum_size(current_price: float) -> float:
-    MIN_NOTIONAL_USD = 10.0
-    min_size = MIN_NOTIONAL_USD / current_price
-    min_size = math.ceil(min_size * 10000) / 10000
-    return max(min_size, 0.0001)
+# FIXED SIZE — NO MORE FLOATING POINT GARBAGE
+FIXED_QTY = 0.20  # ~$15 at current price — perfect size
 
-# FINAL WORKING ORDER FUNCTIONS - PROVEN ON MAINNET
+# FINAL WORKING ORDER FUNCTIONS — BULLETPROOF
 def place_long(qty):
     try:
         result = exchange.market_open(name=SYMBOL, is_buy=True, sz=qty)
@@ -50,7 +46,7 @@ def place_long(qty):
                 if "filled" in status:
                     filled = status["filled"]
                     entry_px = float(filled["avgPx"])
-                    log_print(f"BUY LONG FILLED: {qty:.6f} LTC @ ${entry_px:.3f}")
+                    log_print(f"BUY LONG FILLED: {qty} LTC @ ${entry_px:.3f}")
                     state.last_buy_price = entry_px
                     state.position_open = True
                     state.position_side = "long"
@@ -71,7 +67,7 @@ def place_short(qty):
                 if "filled" in status:
                     filled = status["filled"]
                     entry_px = float(filled["avgPx"])
-                    log_print(f"SHORT FILLED: {qty:.6f} LTC @ ${entry_px:.3f}")
+                    log_print(f"SHORT FILLED: {qty} LTC @ ${entry_px:.3f}")
                     state.last_buy_price = entry_px
                     state.position_open = True
                     state.position_side = "short"
@@ -86,7 +82,7 @@ def place_short(qty):
 
 def close_position():
     qty = get_ltc_position()
-    if qty < MIN_LTC_SELL:
+    if qty < 0.01:
         return False
     try:
         result = exchange.market_close(name=SYMBOL, sz=qty)
@@ -94,7 +90,7 @@ def close_position():
             current_price = fetch_ohlcv().iloc[-1]["close"]
             profit = (current_price - state.last_buy_price) * qty if state.position_side == "long" else (state.last_buy_price - current_price) * qty
             state.total_profit += profit
-            log_print(f"{'SELL LONG' if state.position_side == 'long' else 'COVER SHORT'}: {qty:.6f} LTC @ ${current_price:.3f} | Profit: ${profit:.2f} | Total: ${state.total_profit:.2f}")
+            log_print(f"{'SELL LONG' if state.position_side == 'long' else 'COVER SHORT'}: {qty} LTC @ ${current_price:.3f} | Profit: ${profit:.2f} | Total: ${state.total_profit:.2f}")
             state.last_buy_price = None
             state.position_open = False
             state.position_side = None
@@ -155,31 +151,27 @@ def run_bot():
                 log_print(f"TREND → {trend_str}")
                 state.last_trend = trend_str
 
-            # Signals
+            # Signals — FIXED SIZE
             if signal == "buy" and not state.position_open and not pending_trade:
-                qty = round(max(TRADE_USDT / current_price, get_minimum_size(current_price)), 6)
-                if enough_usdt(TRADE_USDT)[0]:
-                    pending_trade = {"type": "long", "qty": qty, "expires": datetime.now(timezone.utc) + timedelta(minutes=2)}
+                if enough_usdt(15.0)[0]:
+                    pending_trade = {"type": "long", "qty": FIXED_QTY, "expires": datetime.now(timezone.utc) + timedelta(minutes=2)}
                     log_print("GOLDEN CROSS — PENDING LONG")
 
             elif signal == "short" and ALLOW_SHORTS and not state.position_open and not pending_trade:
-                qty = round(max(TRADE_USDT / current_price, get_minimum_size(current_price)), 6)
-                if enough_usdt(TRADE_USDT)[0]:
-                    pending_trade = {"type": "short", "qty": qty, "expires": datetime.now(timezone.utc) + timedelta(minutes=2)}
+                if enough_usdt(15.0)[0]:
+                    pending_trade = {"type": "short", "qty": FIXED_QTY, "expires": datetime.now(timezone.utc) + timedelta(minutes=2)}
                     log_print("DEATH CROSS — PENDING SHORT")
 
-            # Flip
+            # Flip — FIXED SIZE
             if state.position_open and ((state.position_side == "long" and signal == "sell") or (state.position_side == "short" and signal == "buy")):
                 close_position()
                 is_uptrend = df["sma_long"].iloc[-1] > df["sma_long"].iloc[-1 - TREND_LOOKBACK]
-                qty = round(max(TRADE_USDT / current_price, get_minimum_size(current_price)), 6)
-
                 if signal == "sell" and not is_uptrend and ALLOW_SHORTS:
                     log_print("FLIPPING TO SHORT")
-                    place_short(qty)
+                    place_short(FIXED_QTY)
                 elif signal == "buy" and is_uptrend:
                     log_print("FLIPPING TO LONG")
-                    place_long(qty)
+                    place_long(FIXED_QTY)
 
             # Dashboard
             state.dashboard_data.update({
@@ -205,5 +197,7 @@ if __name__ == "__main__":
     bot_thread.start()
 
     import logging
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)
+    app.run(host="0.0.0.0", port=5000, threaded=True)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
     app.run(host="0.0.0.0", port=5000, threaded=True)
