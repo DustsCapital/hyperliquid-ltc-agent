@@ -4,6 +4,7 @@ from hyperliquid.exchange import Exchange
 import eth_account
 import time
 import pandas as pd
+from logger import log_print
 
 from config import API_WALLET_ADDRESS, API_PRIVATE_KEY, SYMBOL, TIMEFRAME, BASE_URL
 
