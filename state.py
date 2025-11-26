@@ -3,6 +3,7 @@ import json
 import os
 from datetime import datetime
 from config import MAX_CROSSES
+from logger import log_print
 
 SAVES_DIR = "saves"
 STATE_FILE = os.path.join(SAVES_DIR, "state.json")
