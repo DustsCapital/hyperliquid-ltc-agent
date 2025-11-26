@@ -1,4 +1,3 @@
-# main.py - FINAL LIVE VERSION - FIXED SIZE - NO MORE "invalid size" - NOV 2025
 import threading
 import time
 import signal
@@ -21,7 +20,7 @@ profit_ratchet_active = False
 peak_unrealized_profit = 0.0
 
 def signal_handler(sig, frame):
-    log_print("Bot stopped by user.", "INFO")  # ← Swap print
+    log_print("Bot stopped by user.", "INFO")
     stop_event.set()
     import os
     os._exit(0)
@@ -162,7 +161,7 @@ def run_bot():
                 trend_word = "uptrend" if trend_str == "Uptrend" else "downtrend"
                 color = "light_green" if trend_str == "Uptrend" else "light_red"
                 colored_trend = f"({color_text(trend_word, color)})"
-                log_print(f"TREND → {colored_trend}", "INFO")  # ← f-string fixes literal; INFO for visibility
+                log_print(f"TREND → {colored_trend}", "INFO")
                 state.last_trend = trend_str
 
             # Signals — FIXED SIZE
