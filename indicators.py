@@ -2,6 +2,7 @@
 import pandas as pd
 from config import MA_SHORT, MA_LONG, TREND_LOOKBACK, RSI_PERIOD, RSI_OVERBOUGHT, RSI_OVERSOLD, ALLOW_SHORTS, USE_RSI_EARLY_EXIT, MAX_CROSSES
 from state import position_open, position_side
+from logger import log_print
 
 last_cross_time = None
 
@@ -52,8 +53,13 @@ def detect_cross(df: pd.DataFrame, cross_history: list, last_trend: str | None):
             from state import save_crosses
             save_crosses()
 
-            if is_uptrend and rsi_val < RSI_OVERBOUGHT:
-                signal = 'buy'
+            if is_uptrend:
+                if rsi_val < RSI_OVERBOUGHT:
+                    signal = 'buy'
+                else:
+                    print(f"[SKIP] GOLDEN CROSS — RSI too high ({rsi_val:.1f} ≥ {RSI_OVERBOUGHT})", "WARNING")
+            else:
+                print(f"[SKIP] GOLDEN CROSS — Market in Downtrend (no longs allowed)")
 
         # Death Cross
         elif cur_short < cur_long and prev_short >= prev_long:
@@ -69,8 +75,16 @@ def detect_cross(df: pd.DataFrame, cross_history: list, last_trend: str | None):
             from state import save_crosses
             save_crosses()
 
-            if not is_uptrend and ALLOW_SHORTS and rsi_val > RSI_OVERSOLD:
-                signal = 'short'
+            if not is_uptrend:
+                if ALLOW_SHORTS:
+                    if rsi_val > RSI_OVERSOLD:
+                        signal = 'short'
+                    else:
+                        print(f"[SKIP] DEATH CROSS — RSI too low ({rsi_val:.1f} ≤ {RSI_OVERSOLD})")
+                else:
+                    print("[SKIP] DEATH CROSS — Shorts disabled in config")
+            else:
+                print(f"[SKIP] DEATH CROSS — Market in Uptrend (no shorts allowed)")
 
         # Optional early exit signals
         if USE_RSI_EARLY_EXIT:
