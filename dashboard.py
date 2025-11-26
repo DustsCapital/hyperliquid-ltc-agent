@@ -2,6 +2,7 @@
 from flask import Flask, render_template_string, request
 import subprocess
 from state import total_profit, position_open, last_signal, cross_history, dashboard_data, cross_history, position_side
+from logger import log_print
 
 app = Flask(__name__)
 
