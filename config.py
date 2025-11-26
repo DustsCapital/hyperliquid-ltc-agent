@@ -12,7 +12,7 @@ TRADE_USDT = 15.0
 TIMEFRAME = "1m"
 MA_SHORT = 50
 MA_LONG = 200
-TREND_LOOKBACK = 5
+TREND_LOOKBACK = 10
 RSI_PERIOD = 14
 RSI_OVERBOUGHT = 80
 RSI_OVERSOLD = 15
@@ -23,13 +23,13 @@ MAX_CROSSES = 4
 
 
 # NEW: Shorting toggle
-ALLOW_SHORTS = True          # ← Set False to disable shorts again
-USE_RSI_EARLY_EXIT = True     # Optional: exit longs early if RSI >85, shorts if RSI <15
+ALLOW_SHORTS = False          # ← Set False to disable shorts again
+USE_RSI_EARLY_EXIT = False     # Optional: exit longs early if RSI >85, shorts if RSI <15
 
 # NEW: Profit protection
 PROFIT_RATCHET_ENABLED = True          # ← Turn the whole feature on/off
-MIN_PROFIT_TO_ACTIVATE = 0.20           # $0.20 profit → switch to protection mode
-PROFIT_PROTECTION_FLOOR = 0.05        # Keep 60% of peak profit (e.g., +$0.40 → close if drops below +$0.24)
+MIN_PROFIT_TO_ACTIVATE = 0.10           # $0.20 profit → switch to protection mode
+PROFIT_PROTECTION_FLOOR = 0.05        # Keep 70% of peak profit (e.g., +$0.40 → close if drops below +$0.24)
 
 
 # How often to log current price in terminal (in seconds)
