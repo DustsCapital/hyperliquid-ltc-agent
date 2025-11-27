@@ -10,19 +10,38 @@ STATE_FILE = os.path.join(SAVES_DIR, "state.json")
 TRADES_FILE = os.path.join(SAVES_DIR, "trades.json")
 CROSS_FILE = os.path.join(SAVES_DIR, "crosses.json")
 
+os.makedirs(SAVES_DIR, exist_ok=True)
+
 # Load crosses
+cross_history = []
 if os.path.exists(CROSS_FILE):
-    with open(CROSS_FILE, 'r') as f:
-        cross_history = json.load(f)
+    try:
+        with open(CROSS_FILE, 'r') as f:
+            cross_history = json.load(f)
+        print(f"Loaded {len(cross_history)} crosses from {CROSS_FILE}")
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        print(f"Corrupt/invalid crosses.json ({e}) — Resetting to empty list.")
+        cross_history = []
 else:
-    cross_history = []
+    print(f"No {CROSS_FILE} found — Starting with empty history.")
 
 def save_crosses():
     data_to_save = cross_history[-MAX_CROSSES:] if len(cross_history) > MAX_CROSSES else cross_history
     with open(CROSS_FILE, 'w') as f:
         json.dump(data_to_save, f, indent=2)
 
-os.makedirs(SAVES_DIR, exist_ok=True)
+# Load trades
+trades = []
+if os.path.exists(TRADES_FILE):
+    try:
+        with open(TRADES_FILE, 'r') as f:
+            trades = json.load(f)
+        print(f"Loaded {len(trades)} trades from {TRADES_FILE}")
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        print(f"Corrupt/invalid trades.json ({e}) — Resetting to empty list.")
+        trades = []
+else:
+    print(f"No {TRADES_FILE} found — Starting with empty trades.")
 
 default_state = {
     "position_open": False,
@@ -31,29 +50,35 @@ default_state = {
     "total_profit": 0.0
 }
 
+# Global vars for defaults
+total_profit = 0.0
+last_buy_price = None
+position_open = False
+position_side = None
+
 if os.path.exists(STATE_FILE):
-    with open(STATE_FILE, 'r') as f:
-        data = json.load(f)
-    total_profit = data.get("total_profit", 0.0)
-    last_buy_price = data.get("last_buy_price")
-    position_open = data.get("position_open", False)
-    position_side = data.get("position_side")
-    print(f"Loaded state from {STATE_FILE}")
+    try:
+        with open(STATE_FILE, 'r') as f:
+            data = json.load(f)
+        total_profit = data.get("total_profit", 0.0)
+        last_buy_price = data.get("last_buy_price")
+        position_open = data.get("position_open", False)
+        position_side = data.get("position_side")
+        print(f"Loaded state from {STATE_FILE}")
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        print(f"Corrupt/invalid state.json ({e}) — Resetting to defaults.")
+        total_profit = 0.0
+        last_buy_price = None
+        position_open = False
+        position_side = None
+        # Optional: os.remove(STATE_FILE)  # Uncomment to auto-nuke bad file
 else:
-    total_profit = 0.0
-    last_buy_price = None
-    position_open = False
-    position_side = None
+    print(f"No {STATE_FILE} found — Using defaults.")
+
+# Save defaults if new
+if not os.path.exists(STATE_FILE):
     with open(STATE_FILE, 'w') as f:
         json.dump(default_state, f, indent=2)
-
-if os.path.exists(TRADES_FILE):
-    with open(TRADES_FILE, 'r') as f:
-        trades = json.load(f)
-else:
-    trades = []
-    with open(TRADES_FILE, 'w') as f:
-        json.dump(trades, f, indent=2)
 
 def save_state():
     state = {
