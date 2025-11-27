@@ -38,7 +38,7 @@ def append_candle(timeframe, df):
 def collect_all_candles(one_m_df=None):
     end_time = int(datetime.now().timestamp() * 1000)
     start_time = end_time - 24 * 3600 * 1000  # 24h
-    timeframes = ["3m", "5m"]  # ← Your update: No 10m
+    timeframes = ["1m", "3m", "5m"]  # ← Your update: No 10m
     
     # Handle 1m if no df passed
     if one_m_df is None:
