@@ -21,19 +21,41 @@ def get_or_create_csv(filename):
     return full_path
 
 def append_candle(timeframe, df):
+    if df.empty:
+        log_print(f"No new {timeframe} data to append.", "DEBUG")
+        return
+    
     filename = get_or_create_csv(CANDLE_FILES[timeframe])
-    existing_df = pd.read_csv(filename)
-    if existing_df.empty:
-        last_timestamp = None
-    else:
-        last_timestamp = pd.to_datetime(existing_df['timestamp'].iloc[-1])
+    existing_df = pd.read_csv(filename, parse_dates=['timestamp'])
     
-    new_candle = df.iloc[-1]
-    new_timestamp = pd.to_datetime(new_candle['timestamp'])
+    # Ensure incoming df has datetime timestamp
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
     
-    if last_timestamp is None or new_timestamp > last_timestamp:
-        new_candle.to_frame().T.to_csv(filename, mode='a', header=False, index=False)
-        log_print(f"Appended {timeframe} candle: {new_timestamp.strftime('%Y-%m-%d %H:%M:%S')}", "DEBUG")
+    # Concat existing + new
+    combined_df = pd.concat([existing_df, df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]], ignore_index=True)
+    
+    # Aggregate: Unique timestamps with proper OHLCV
+    agg_df = combined_df.groupby('timestamp').agg({
+        'open': 'first',
+        'high': 'max',
+        'low': 'min',
+        'close': 'last',
+        'volume': 'sum'
+    }).reset_index()
+    
+    # Sort and drop any remaining dups (just in case)
+    agg_df = agg_df.sort_values('timestamp').drop_duplicates(subset=['timestamp'], keep='last')
+    
+    # Round prices to 3 decimals, volume to 2
+    for col in ['open', 'high', 'low', 'close']:
+        agg_df[col] = agg_df[col].round(3)
+    agg_df['volume'] = agg_df['volume'].round(2)
+    
+    # Save full aggregated CSV with ISO timestamp format
+    agg_df.to_csv(filename, index=False, date_format='%Y-%m-%d %H:%M:%S')
+    
+    new_bars = len(agg_df) - len(existing_df)
+    log_print(f"Appended & aggregated {new_bars} {timeframe} bars. Total: {len(agg_df)}", "DEBUG")
 
 def collect_all_candles(one_m_df=None):
     end_time = int(datetime.now().timestamp() * 1000)
