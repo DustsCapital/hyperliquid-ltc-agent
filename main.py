@@ -129,11 +129,20 @@ def run_bot():
     global pending_trade, last_price_log, profit_ratchet_active, peak_unrealized_profit
     while not stop_event.is_set():
         try:
+            
             df = fetch_ohlcv()
-            if df.empty:
-                log_print("No data — skipping", "DEBUG")
+            if df.empty or len(df) < MA_LONG + 20:
+                log_print("Not enough data yet, waiting...", "DEBUG")
                 time.sleep(CHECK_INTERVAL)
                 continue
+
+            # ──────── ADD THIS ENTIRE BLOCK HERE (every 30 sec) ────────
+            try:
+                # Save 1m, 3m, 5m candles to CSV — this is what creates your files
+                collect_all_candles(one_m_df=df)  # we already have fresh 1m data → reuse it
+            except Exception as e:
+                log_print(f"Candle collection failed: {e}", "WARNING")
+            # ──────────────────────────────────────────────────────────────
 
             current_price = df['close'].iloc[-1]
             signal, trend_str, cross_type = detect_cross(df, state.cross_history, state.last_trend)
