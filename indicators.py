@@ -1,7 +1,7 @@
 # indicators.py
 import pandas as pd
-from config import MA_SHORT, MA_LONG, TREND_LOOKBACK, RSI_PERIOD, RSI_OVERBOUGHT, RSI_OVERSOLD, ALLOW_SHORTS, USE_RSI_EARLY_EXIT, MAX_CROSSES
-from state import position_open, position_side
+from config import MA_SHORT, MA_LONG, TREND_LOOKBACK, RSI_PERIOD, RSI_OVERBOUGHT, RSI_OVERSOLD, ALLOW_SHORTS, USE_RSI_EARLY_EXIT
+from state import position_open, position_side, save_crosses  # ← MOVED TO TOP!
 from logger import log_print
 
 last_cross_time = None
@@ -36,61 +36,57 @@ def detect_cross(df: pd.DataFrame, cross_history: list, last_trend: str | None):
 
     if last_cross_time != current_time:
         last_cross_time = current_time
-
         rsi_val = df['rsi'].iloc[-1]
 
-        # Golden Cross
+        # === GOLDEN CROSS ===
         if cur_short > cur_long and prev_short <= prev_long:
             cross_type = 'golden'
+            log_print(f"GOLDEN CROSS DETECTED @ ${df['close'].iloc[-1]:.3f} | RSI {rsi_val:.1f}", "INFO")
+            
             cross_history.append({
                 'type': 'golden',
                 'time': current_time.strftime('%H:%M:%S'),
                 'price': df['close'].iloc[-1],
                 'trend': trend_str
             })
-            if len(cross_history) > MAX_CROSSES:
+            if len(cross_history) > 4:
                 cross_history.pop(0)
-            from state import save_crosses
-            save_crosses()
+            save_crosses()  # ← NOW ALWAYS CALLED
 
-            if is_uptrend:
-                if rsi_val < RSI_OVERBOUGHT:
-                    signal = 'buy'
-                else:
-                    print(f"[SKIP] GOLDEN CROSS — RSI too high ({rsi_val:.1f} ≥ {RSI_OVERBOUGHT})", "WARNING")
+            if is_uptrend and rsi_val < RSI_OVERBOUGHT:
+                signal = 'buy'
+                log_print("GOLDENaf CROSS → ENTERING LONG", "INFO")
             else:
-                print(f"[SKIP] GOLDEN CROSS — Market in Downtrend (no longs allowed)")
+                reason = "RSI too high" if rsi_val >= RSI_OVERBOUGHT else "Not in uptrend"
+                log_print(f"[SKIPPED] GOLDEN CROSS — {reason}", "WARNING")
 
-        # Death Cross
+        # === DEATH CROSS ===
         elif cur_short < cur_long and prev_short >= prev_long:
             cross_type = 'death'
+            log_print(f"DEATH CROSS DETECTED @ ${df['close'].iloc[-1]:.3f} | RSI {rsi_val:.1f}", "INFO")
+            
             cross_history.append({
                 'type': 'death',
                 'time': current_time.strftime('%H:%M:%S'),
                 'price': df['close'].iloc[-1],
                 'trend': trend_str
             })
-            if len(cross_history) > MAX_CROSSES:
+            if len(cross_history) > 4:
                 cross_history.pop(0)
-            from state import save_crosses
-            save_crosses()
+            save_crosses()  # ← NOW ALWAYS CALLED
 
-            if not is_uptrend:
-                if ALLOW_SHORTS:
-                    if rsi_val > RSI_OVERSOLD:
-                        signal = 'short'
-                    else:
-                        print(f"[SKIP] DEATH CROSS — RSI too low ({rsi_val:.1f} ≤ {RSI_OVERSOLD})")
-                else:
-                    print("[SKIP] DEATH CROSS — Shorts disabled in config")
+            if not is_uptrend and ALLOW_SHORTS and rsi_val > RSI_OVERSOLD:
+                signal = 'short'
+                log_print("DEATH CROSS → ENTERING SHORT", "INFO")
             else:
-                print(f"[SKIP] DEATH CROSS — Market in Uptrend (no shorts allowed)")
+                reason = "Shorts disabled" if not ALLOW_SHORTS else "RSI too low" if rsi_val <= RSI_OVERSOLD else "In uptrend"
+                log_print(f"[SKIPPED] DEATH CROSS — {reason}", "WARNING")
 
-        # Optional early exit signals
-        if USE_RSI_EARLY_EXIT:
-            if position_open and position_side == "long" and rsi_val > RSI_OVERBOUGHT:
+        # Early exit
+        if USE_RSI_EARLY_EXIT and position_open:
+            if position_side == "long" and rsi_val > 85:
                 signal = 'sell_early'
-            elif position_open and position_side == "short" and rsi_val < RSI_OVERSOLD:
+            elif position_side == "short" and rsi_val < 15:
                 signal = 'cover_early'
 
     return signal, trend_str, cross_type
