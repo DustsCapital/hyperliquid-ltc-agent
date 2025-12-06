@@ -1,4 +1,4 @@
-# main.py — FINAL PERFECT VERSION (everything works)
+# main.py — FINAL VERSION: FLIPPING + 1% TRAILING STOP (Dec 2025)
 import threading
 import time
 import signal
@@ -13,18 +13,12 @@ from exchange import get_balance, get_ltc_position, fetch_ohlcv, exchange
 from indicators import detect_cross
 from data_collector import collect_all_candles
 from logger import log_print
-from utils import color_text
 
-# Import state variables
 from state import total_profit, position_open, position_side, last_signal, cross_history, dashboard_data
 
 stop_event = threading.Event()
 pending_trade = None
-
-# GLOBALS
 last_price_log = datetime.now(timezone.utc)
-profit_ratchet_active = False
-peak_unrealized_profit = 0.0
 
 def signal_handler(sig, frame):
     log_print("Bot stopped by user.", "INFO")
@@ -45,8 +39,7 @@ def calculate_dynamic_qty(current_price):
         return 0.01
     rounded_price = math.ceil(current_price)
     qty = TRADE_USDT / rounded_price
-    qty_rounded = math.ceil(qty * 100) / 100
-    return qty_rounded
+    return math.ceil(qty * 100) / 100
 
 def place_long(qty):
     try:
@@ -56,7 +49,7 @@ def place_long(qty):
                 if "filled" in status:
                     filled = status["filled"]
                     entry_px = float(filled["avgPx"])
-                    log_print(f"BUY LONG FILLED: {qty} LTC @ ${entry_px:.3f}", "INFO")
+                    log_print(f"BUY LONG FILLED: {qty:.4f} LTC @ ${entry_px:.3f}", "INFO")
                     state.last_buy_price = entry_px
                     state.position_open = True
                     state.position_side = "long"
@@ -77,7 +70,7 @@ def place_short(qty):
                 if "filled" in status:
                     filled = status["filled"]
                     entry_px = float(filled["avgPx"])
-                    log_print(f"SHORT FILLED: {qty} LTC @ ${entry_px:.3f}", "INFO")
+                    log_print(f"SHORT FILLED: {qty:.4f} LTC @ ${entry_px:.3f}", "INFO")
                     state.last_buy_price = entry_px
                     state.position_open = True
                     state.position_side = "short"
@@ -102,12 +95,16 @@ def close_position():
                     filled = status["filled"]
                     exit_px = float(filled["avgPx"])
                     pnl = (exit_px - state.last_buy_price) * qty if state.position_side == "long" else (state.last_buy_price - exit_px) * qty
-                    log_print(f"POSITION CLOSED: {qty} LTC @ ${exit_px:.3f} | PnL: ${pnl:+.2f}", "INFO")
+                    log_print(f"POSITION CLOSED: {qty:.4f} LTC @ ${exit_px:.3f} | PnL: ${pnl:+.2f}", "INFO")
                     state.total_profit += pnl
                     state.save_trade("close", qty, exit_px)
                     state.position_open = False
                     state.position_side = None
                     state.save_state()
+                    # Reset trailing peaks
+                    for attr in ['highest_price', 'lowest_price']:
+                        if hasattr(state, attr):
+                            delattr(state, attr)
                     return True
         return False
     except Exception as e:
@@ -115,48 +112,80 @@ def close_position():
         return False
 
 def run_bot():
-    global last_price_log, profit_ratchet_active, peak_unrealized_profit, pending_trade
+    global last_price_log, pending_trade
 
     while not stop_event.is_set():
         try:
             df = fetch_ohlcv()
             if df.empty or len(df) < MA_LONG + 20:
-                log_print("Not enough data yet, waiting...", "DEBUG")
                 time.sleep(CHECK_INTERVAL)
                 continue
 
-            # Save candles
-            try:
-                collect_all_candles(one_m_df=df)
-            except Exception as e:
-                log_print(f"Candle collection failed: {e}", "WARNING")
-
+            collect_all_candles(one_m_df=df)
             current_price = df['close'].iloc[-1]
             signal, trend_str, cross_type = detect_cross(df, cross_history, state.last_trend)
 
-            # TREND CHANGE LOGGING
             if getattr(state, 'last_trend', None) != trend_str:
-                arrow = "↑" if trend_str == "Uptrend" else "↓"
-                log_print(f"TREND → {arrow} {trend_str}", "INFO")
+                log_print(f"TREND → {trend_str}", "INFO")
                 state.last_trend = trend_str
 
-            # PRICE LOGGING
             if PRICE_LOG_INTERVAL > 0:
                 now = datetime.now(timezone.utc)
                 if (now - last_price_log).total_seconds() >= PRICE_LOG_INTERVAL:
-                    arrow = "↑" if trend_str == "Uptrend" else "↓"
-                    rsi_val = df['rsi'].iloc[-1] if 'rsi' in df.columns and not pd.isna(df['rsi'].iloc[-1]) else 0.0
-                    log_print(f"Price ${current_price:.3f} {arrow} │ RSI {rsi_val:.1f} │ {trend_str}")
+                    rsi_val = df['rsi'].iloc[-1] if 'rsi' in df.columns else 0.0
+                    log_print(f"Price ${current_price:.3f} │ RSI {rsi_val:.1f} │ {trend_str}")
                     last_price_log = now
 
-            # Trading logic placeholder (your existing code goes here)
-            if signal == "buy" and not state.position_open:
-                if enough_usdt(TRADE_USDT)[0]:
+            # ==================== TRAILING STOP ====================
+            if TRAILING_STOP_ENABLED and state.position_open and state.last_buy_price:
+                qty = get_ltc_position()
+                if qty >= MIN_LTC_SELL:
+                    if state.position_side == "long":
+                        peak = max(current_price, getattr(state, 'highest_price', current_price))
+                        state.highest_price = peak
+                        if current_price <= peak * (1 - TRAILING_STOP_PCT / 100):
+                            log_print(f"TRAILING STOP HIT ({TRAILING_STOP_PCT}%)! Closing LONG @ ${current_price:.3f}", "INFO")
+                            close_position()
+                    else:  # short
+                        peak = min(current_price, getattr(state, 'lowest_price', current_price))
+                        state.lowest_price = peak
+                        if current_price >= peak * (1 + TRAILING_STOP_PCT / 100):
+                            log_print(f"TRAILING STOP HIT ({TRAILING_STOP_PCT}%)! Closing SHORT @ ${current_price:.3f}", "INFO")
+                            close_position()
+            # ==========================================================
+
+            old_side = state.position_side if state.position_open else None
+
+            # Close on opposite cross
+            if state.position_open:
+                if (state.position_side == "long" and signal == "short") or \
+                   (state.position_side == "short" and signal == "buy"):
+                    close_position()
+
+            # Open new position (or flip)
+            if not state.position_open:
+                if signal == "buy":
                     qty = calculate_dynamic_qty(current_price)
                     pending_trade = {"type": "long", "qty": qty, "expires": datetime.now(timezone.utc) + timedelta(minutes=2)}
-                    log_print(f"GOLDEN CROSS — PENDING LONG {qty} LTC", "INFO")
+                    log_print(f"{'FLIP → ' if old_side else ''}GOLDEN CROSS — PENDING LONG {qty:.4f} LTC", "INFO")
+                elif signal == "short" and ALLOW_SHORTS:
+                    qty = calculate_dynamic_qty(current_price)
+                    pending_trade = {"type": "short", "qty": qty, "expires": datetime.now(timezone.utc) + timedelta(minutes=2)}
+                    log_print(f"{'FLIP → ' if old_side else ''}DEATH CROSS — PENDING SHORT {qty:.4f} LTC", "INFO")
 
-            # Dashboard update
+            # Execute pending
+            if pending_trade and datetime.now(timezone.utc) < pending_trade["expires"]:
+                qty = pending_trade["qty"]
+                if pending_trade["type"] == "long" and not state.position_open and enough_usdt(TRADE_USDT)[0]:
+                    place_long(qty)
+                    pending_trade = None
+                elif pending_trade["type"] == "short" and not state.position_open and enough_usdt(TRADE_USDT)[0]:
+                    place_short(qty)
+                    pending_trade = None
+            elif pending_trade:
+                log_print("PENDING TRADE EXPIRED", "WARNING")
+                pending_trade = None
+
             state.dashboard_data.update({
                 "last_update": datetime.now(timezone.utc).strftime("%H:%M:%S"),
                 "price": current_price,
@@ -173,7 +202,7 @@ def run_bot():
             time.sleep(10)
 
 if __name__ == "__main__":
-    log_print("=== HYPERLIQUID LTC BOT STARTED — LIVE TRADING ===", "INFO")
+    log_print("=== HYPERLIQUID LTC BOT STARTED — FLIPPING + TRAILING STOP ===", "INFO")
     log_print(f"Startup USDC Balance: ${get_balance():.2f}", "INFO")
 
     bot_thread = threading.Thread(target=run_bot, daemon=False)
