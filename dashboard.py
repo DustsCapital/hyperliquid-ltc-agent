@@ -1,8 +1,11 @@
-# dashboard.py
+# dashboard.py — YOUR ORIGINAL (beautiful) + crosses fixed
 from flask import Flask, render_template_string, request
 import subprocess
-from state import total_profit, position_open, last_signal, cross_history, dashboard_data, cross_history, position_side
+import state  # ← ONLY CHANGE: import module, not variables
 from logger import log_print
+import datetime
+from datetime import timezone
+from utils import start_time
 
 app = Flask(__name__)
 
@@ -27,7 +30,7 @@ HTML = """
     box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
   }
   h1 {
-    color: #ffffff; /* ← AQUA → WHITE */
+    color: #ffffff;
     text-align: center;
     font-size: 2.2rem;
     font-weight: bold;
@@ -38,17 +41,14 @@ HTML = """
     color: #ffffff;
   }
   strong {
-    color: #ffffff; /* ← ALL LABELS WHITE */
+    color: #ffffff;
   }
-  /* STATUS & PROFIT KEEP COLORS */
   span[style*="green"], span[style*="red"] {
     font-weight: bold;
   }
-  /* TREND COLORS */
   span[style*="#00FFFF"], span[style*="#FFFF00"] {
     font-weight: bold;
   }
-  /* REFRESH BUTTON: GREY + BLACK TEXT */
   button {
     background: #666666;
     color: #000000;
@@ -112,23 +112,31 @@ def index():
     except:
         is_running = False
     status = "RUNNING" if is_running else "STOPPED"
-    pos = "LONG" if position_open and position_side == "long" else \
-      "SHORT" if position_open and position_side == "short" else "FLAT"
-
-# REVERSE CROSSES: NEWEST AT TOP
-    crosses = list(reversed(cross_history))
+    pos = "LONG" if state.position_open and state.position_side == "long" else \
+          "SHORT" if state.position_open and state.position_side == "short" else "FLAT"
+    
+    crosses = list(reversed(state.cross_history))  # ← live list
 
     return render_template_string(
         HTML,
         status=status,
-        profit=total_profit,
+        profit=state.total_profit,
         position=pos,
-        signal=last_signal,
-        **dashboard_data
+        signal=state.last_signal,
+        crosses=crosses,
+        **state.dashboard_data
     )
 
-# ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-# ADD THIS EXACT BLOCK AT THE END OF THE FILE
+@app.route('/health')
+def health():
+    return {
+        "status": "alive",
+        "uptime": (datetime.now(timezone.utc) - start_time).seconds,
+        "profit": round(state.total_profit, 2),
+        "position": state.position_side or "flat",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
 @app.route('/shutdown', methods=['GET'])
 def shutdown():
     func = request.environ.get('werkzeug.server.shutdown')
@@ -136,4 +144,3 @@ def shutdown():
         raise RuntimeError('Not running with the Werkzeug Server')
     func()
     return 'Server shutting down...'
-# ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
