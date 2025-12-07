@@ -7,12 +7,12 @@ load_dotenv()
 
 EXCHANGE = "hyperliquid"
 NETWORK = "mainnet"
-SYMBOL = "LTC"
+SYMBOL = "LTC" # adjust depending on which currency you want the program to trade on.
 TRADE_USDT = 15.0
 TIMEFRAME = "1m"
 MA_SHORT = 50
 MA_LONG = 200
-TREND_LOOKBACK = 10
+TREND_LOOKBACK = 5
 RSI_PERIOD = 14
 RSI_OVERBOUGHT = 80
 RSI_OVERSOLD = 15
@@ -23,7 +23,7 @@ MAX_CROSSES = 4
 
 
 # NEW: Shorting toggle
-ALLOW_SHORTS = False          # ← Set False to disable shorts again
+ALLOW_SHORTS = True         # ← Set False to disable shorts again
 USE_RSI_EARLY_EXIT = False     # Optional: exit longs early if RSI >85, shorts if RSI <15
 
 # NEW: Profit protection
@@ -33,11 +33,27 @@ PROFIT_PROTECTION_FLOOR = 0.05        # Keep 70% of peak profit (e.g., +$0.40 �
 
 
 # How often to log current price in terminal (in seconds)
-PRICE_LOG_INTERVAL = 120   # 300 = 5 minutes (default)
+PRICE_LOG_INTERVAL = 60   # 300 = 5 minutes (default)
 # Examples:
 # PRICE_LOG_INTERVAL = 60    # every 1 minute
 # PRICE_LOG_INTERVAL = 900   # every 15 minutes
 # PRICE_LOG_INTERVAL = 0     # disable price logs
+
+
+# ────────────────────── LOGGING CONTROL ──────────────────────
+# Set what you want to see in terminal
+# Options: "QUIET", "NORMAL", "VERBOSE", "DEBUG"
+TERMINAL_LOG_MODE = "QUIET"        # ← Change this line to control everything
+
+# What each mode shows in terminal:
+# QUIET   → only startup, balance, entries/exits, warnings/errors
+# NORMAL  → + trend changes + "Created new candle file"
+# VERBOSE → + every time CSVs are saved (once per 30s)
+# DEBUG    → everything (insane spam, only for debugging)
+# ─────────────────────────────────────────────────────────────
+
+
+
 
 
 
@@ -49,3 +65,13 @@ API_PRIVATE_KEY = os.getenv("HL_PRIVATE_KEY")
 MAIN_WALLET = os.getenv("MAIN_WALLET")
 
 BASE_URL = constants.MAINNET_API_URL
+
+# ==================== TRAILING STOP CONFIG ====================
+TRAILING_STOP_ENABLED = False   # ← Toggle: True to use Price-based PnL
+TRAILING_STOP_PCT = 0.5        # ← Your 1% trailing stop
+# ==============================================================
+
+# ==================== TRAILING PNLP STOP CONFIG ====================
+TRAILING_PNL_ENABLED = False      # ← Toggle: True to use PnL-based instead of price
+TRAILING_PNL_PCT = -2.0          # ← e.g., -2% from peak PnL (negative for loss floor)
+# ==============================================================
