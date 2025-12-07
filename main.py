@@ -1,4 +1,4 @@
-# main.py — FINAL VERSION: FLIPPING + 1% TRAILING STOP (Dec 2025)
+# main.py — FINAL VERSION: FLIPPING + PNLP TRAILING STOP (Dec 2025)
 import threading
 import time
 import signal
@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 from dashboard import app
 from config import *
 import state
-from exchange import get_balance, get_ltc_position, fetch_ohlcv, exchange
+from exchange import get_balance, get_ltc_position, fetch_ohlcv, exchange, get_unrealized_pnl
 from indicators import detect_cross
 from data_collector import collect_all_candles
 from logger import log_print
@@ -49,10 +49,13 @@ def place_long(qty):
                 if "filled" in status:
                     filled = status["filled"]
                     entry_px = float(filled["avgPx"])
-                    log_print(f"BUY LONG FILLED: {qty:.4f} LTC @ ${entry_px:.3f}", "INFO")
+                    log_print(f"✅ BUY LONG FILLED: {qty:.4f} LTC @ ${entry_px:.3f}", "INFO")
                     state.last_buy_price = entry_px
                     state.position_open = True
                     state.position_side = "long"
+                    # Reset PnL peak on new entry
+                    if hasattr(state, 'peak_pnl_pct'):
+                        delattr(state, 'peak_pnl_pct')
                     state.save_state()
                     state.save_trade("buy", qty, entry_px)
                     return True
@@ -70,10 +73,13 @@ def place_short(qty):
                 if "filled" in status:
                     filled = status["filled"]
                     entry_px = float(filled["avgPx"])
-                    log_print(f"SHORT FILLED: {qty:.4f} LTC @ ${entry_px:.3f}", "INFO")
+                    log_print(f"✅ SHORT FILLED: {qty:.4f} LTC @ ${entry_px:.3f}", "INFO")
                     state.last_buy_price = entry_px
                     state.position_open = True
                     state.position_side = "short"
+                    # Reset PnL peak on new entry
+                    if hasattr(state, 'peak_pnl_pct'):
+                        delattr(state, 'peak_pnl_pct')
                     state.save_state()
                     state.save_trade("short", qty, entry_px)
                     return True
@@ -84,28 +90,30 @@ def place_short(qty):
         return False
 
 def close_position():
-    qty = get_ltc_position()
-    if qty < MIN_LTC_SELL:
-        return False
     try:
-        result = exchange.market_close(name=SYMBOL, is_buy=state.position_side == "short", sz=qty)
+        result = exchange.market_close(coin=SYMBOL)  # Auto: full position, detects side
         if result.get("status") == "ok":
             for status in result["response"]["data"]["statuses"]:
                 if "filled" in status:
                     filled = status["filled"]
                     exit_px = float(filled["avgPx"])
+                    qty = float(filled["totalSz"])  # From response (positive)
                     pnl = (exit_px - state.last_buy_price) * qty if state.position_side == "long" else (state.last_buy_price - exit_px) * qty
-                    log_print(f"POSITION CLOSED: {qty:.4f} LTC @ ${exit_px:.3f} | PnL: ${pnl:+.2f}", "INFO")
+                    close_msg = f"POSITION CLOSED: {qty:.4f} LTC @ ${exit_px:.3f} | PnL: ${pnl:+.2f}"
+                    if pnl >= 0:
+                        close_msg = f"🎉 {close_msg}"
+                    log_print(close_msg, "INFO")
                     state.total_profit += pnl
                     state.save_trade("close", qty, exit_px)
                     state.position_open = False
                     state.position_side = None
                     state.save_state()
                     # Reset trailing peaks
-                    for attr in ['highest_price', 'lowest_price']:
+                    for attr in ['highest_price', 'lowest_price', 'peak_pnl_pct']:
                         if hasattr(state, attr):
                             delattr(state, attr)
                     return True
+        log_print(f"CLOSE FAILED: {result}", "ERROR")
         return False
     except Exception as e:
         log_print(f"CLOSE EXCEPTION: {e}", "ERROR")
@@ -133,25 +141,28 @@ def run_bot():
                 now = datetime.now(timezone.utc)
                 if (now - last_price_log).total_seconds() >= PRICE_LOG_INTERVAL:
                     rsi_val = df['rsi'].iloc[-1] if 'rsi' in df.columns else 0.0
-                    log_print(f"Price ${current_price:.3f} │ RSI {rsi_val:.1f} │ {trend_str}")
+                    current_pnl_pct, current_pnl_usd = get_unrealized_pnl() if state.position_open else (0.0, 0.0)
+                    pnl_str = f"{current_pnl_pct:+.1f}% (${current_pnl_usd:+.2f})" if state.position_open else "0% ($0.00)"
+                    log_print(f"Price ${current_price:.3f} │ RSI {rsi_val:.1f} │ Balance: ${get_balance():.2f} │ Position: {get_ltc_position():.6f} LTC | PnL: {pnl_str} │ {trend_str}")
                     last_price_log = now
 
-            # ==================== TRAILING STOP ====================
-            if TRAILING_STOP_ENABLED and state.position_open and state.last_buy_price:
+            # ==================== TRAILING PNLP STOP ====================
+            if TRAILING_PNL_ENABLED and state.position_open:
                 qty = get_ltc_position()
                 if qty >= MIN_LTC_SELL:
-                    if state.position_side == "long":
-                        peak = max(current_price, getattr(state, 'highest_price', current_price))
-                        state.highest_price = peak
-                        if current_price <= peak * (1 - TRAILING_STOP_PCT / 100):
-                            log_print(f"TRAILING STOP HIT ({TRAILING_STOP_PCT}%)! Closing LONG @ ${current_price:.3f}", "INFO")
-                            close_position()
-                    else:  # short
-                        peak = min(current_price, getattr(state, 'lowest_price', current_price))
-                        state.lowest_price = peak
-                        if current_price >= peak * (1 + TRAILING_STOP_PCT / 100):
-                            log_print(f"TRAILING STOP HIT ({TRAILING_STOP_PCT}%)! Closing SHORT @ ${current_price:.3f}", "INFO")
-                            close_position()
+                    current_pnl_pct, _ = get_unrealized_pnl()
+                    
+                    # Track peak PnL % (starts at 0 at entry)
+                    if not hasattr(state, 'peak_pnl_pct') or current_pnl_pct > getattr(state, 'peak_pnl_pct', 0.0):
+                        state.peak_pnl_pct = current_pnl_pct
+                        log_print(f"New PnL Peak: {state.peak_pnl_pct:+.2f}%", "DEBUG")  # Optional verbose log
+                    
+                    # Trail: Close if current PnL < peak + threshold (e.g., -2% floor from peak)
+                    trail_threshold = state.peak_pnl_pct + TRAILING_PNL_PCT  # e.g., if peak +5%, threshold +3% (-2 floor)
+                    if current_pnl_pct <= trail_threshold:
+                        log_print(f"TRAILING PNLP STOP HIT ({TRAILING_PNL_PCT:+.1f}%)! Peak was {state.peak_pnl_pct:+.2f}%, closing @ {current_pnl_pct:+.2f}% PnL", "INFO")
+                        close_position()
+                        # Reset peak on close (already in close_position)
             # ==========================================================
 
             old_side = state.position_side if state.position_open else None
