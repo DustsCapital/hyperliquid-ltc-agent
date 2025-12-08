@@ -1,11 +1,4 @@
-# main.py — FINAL UNIVERSAL VERSION (Dec 2025)
-# Features:
-# • Dynamic leverage from liquidatable endpoint (reads your website setting)
-# • Correct size rounding using asset metadata (no more "invalid size")
-# • Any leverage works with $14 balance
-# • Precision fix + instant pending trade execution
-# • Emojis: ✅ for opens, ❌ for losses, 🎉 for profits
-# • Clean logs + dashboard support
+# main.py — (December 2025)
 
 import threading
 import time
@@ -34,20 +27,20 @@ asset_info = next(a for a in meta['universe'] if a['name'] == SYMBOL)
 SZ_DECIMALS = int(asset_info['szDecimals'])           # e.g. 2 for LTC, 5 for BTC
 MIN_SIZE = float(asset_info.get('minSize', 0.001))
 
-# === DYNAMIC LEVERAGE FROM LIQUIDATABLE ENDPOINT ===
+# === DYNAMIC LEVERAGE DETECTION (from instant_test.py) ===
 def get_current_leverage():
-    """Reads the actual leverage from Hyperliquid's liquidatable endpoint (works without positions)"""
     try:
-        liq_state = info.liquidatable(user=API_WALLET_ADDRESS)
-        lev_str = liq_state.get("leverage", "1")
-        lev = int(float(lev_str))
-        log_print(f"Detected current leverage: {lev}× (from liquidatable endpoint)", "INFO")
-        return lev
-    except Exception as e:
-        log_print(f"Leverage query failed ({e}) — defaulting to 1×", "WARNING")
+        state = info.user_state(API_WALLET_ADDRESS)
+        for pos in state.get("assetPositions", []):
+            if pos["position"]["coin"] == SYMBOL:
+                return int(pos["position"]["leverage"]["value"])
+        # fallback: account-wide cross leverage
+        return int(state.get("marginSummary", {}).get("accountLeverage", 1))
+    except:
         return 1
 
 current_leverage = get_current_leverage()
+log_print(f"Detected leverage: {current_leverage}× (from Hyperliquid)", "INFO")
 
 # === MARGIN CHECK USING DYNAMIC LEVERAGE ===
 def enough_usdt(required_notional):
