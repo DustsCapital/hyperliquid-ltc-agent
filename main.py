@@ -1,4 +1,11 @@
-# main.py — (December 2025)
+# main.py — FINAL UNIVERSAL VERSION (Dec 2025)
+# Features:
+# • Dynamic leverage from liquidatable endpoint (reads your website setting)
+# • Correct size rounding using asset metadata (no more "invalid size")
+# • Any leverage works with $14 balance
+# • Precision fix + instant pending trade execution
+# • Emojis: ✅ for opens, ❌ for losses, 🎉 for profits
+# • Clean logs + dashboard support
 
 import threading
 import time
@@ -27,27 +34,24 @@ asset_info = next(a for a in meta['universe'] if a['name'] == SYMBOL)
 SZ_DECIMALS = int(asset_info['szDecimals'])           # e.g. 2 for LTC, 5 for BTC
 MIN_SIZE = float(asset_info.get('minSize', 0.001))
 
-# === DYNAMIC LEVERAGE DETECTION ===
+# === DYNAMIC LEVERAGE FROM LIQUIDATABLE ENDPOINT ===
 def get_current_leverage():
-    """Reads the actual leverage you have set in Hyperliquid (no hardcoding)"""
+    """Reads the actual leverage from Hyperliquid's liquidatable endpoint (works without positions)"""
     try:
-        user_state = info.user_state(API_WALLET_ADDRESS)
-        # If position exists → use position-specific leverage
-        for pos in user_state.get("assetPositions", []):
-            if pos["position"]["coin"] == SYMBOL:
-                return int(pos["position"]["leverage"]["value"])
-        # Otherwise use account-wide cross leverage
-        acc_lev = user_state.get("marginSummary", {}).get("accountLeverage")
-        return int(acc_lev) if acc_lev else 1
-    except:
+        liq_state = info.liquidatable(user=API_WALLET_ADDRESS)
+        lev_str = liq_state.get("leverage", "1")
+        lev = int(float(lev_str))
+        log_print(f"Detected current leverage: {lev}× (from liquidatable endpoint)", "INFO")
+        return lev
+    except Exception as e:
+        log_print(f"Leverage query failed ({e}) — defaulting to 1×", "WARNING")
         return 1
 
 current_leverage = get_current_leverage()
-log_print(f"Detected current leverage: {current_leverage}× (from Hyperliquid)", "INFO")
 
-# === CORRECTED FUNCTIONS ===
+# === MARGIN CHECK USING DYNAMIC LEVERAGE ===
 def enough_usdt(required_notional):
-    """Check if we have enough margin using REAL leverage"""
+    """Check if we have enough margin using detected leverage"""
     free = get_balance()
     needed_margin = (required_notional / current_leverage) * (1 + FEE_BUFFER_PCT)
     enough = free >= needed_margin
@@ -118,7 +122,7 @@ def close_position():
     log_print(f"CLOSE FAILED: {result}", "ERROR")
     return False
 
-# === REST OF BOT (unchanged except tiny fixes) ===
+# === BOT LOOP ===
 stop_event = threading.Event()
 pending_trade = None
 last_price_log = datetime.now(timezone.utc)
@@ -157,7 +161,7 @@ def run_bot():
                 log_print(f"Price ${current_price:.3f} │ RSI {rsi_val:.1f} │ Balance: ${get_balance():.2f} │ Pos: {get_position():.4f} {SYMBOL} │ PnL: {pnl_pct:+.1f}% │ {trend_str}")
                 last_price_log = datetime.now(timezone.utc)
 
-            # Trailing PnL stop (unchanged)
+            # Trailing PnL stop
             if TRAILING_PNL_ENABLED and state.position_open:
                 qty = get_position()
                 if qty >= MIN_SIZE:
