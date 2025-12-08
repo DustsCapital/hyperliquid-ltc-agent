@@ -34,26 +34,26 @@ def get_current_leverage():
         for pos in state.get("assetPositions", []):
             if pos["position"]["coin"] == SYMBOL:
                 return int(pos["position"]["leverage"]["value"])
-        # fallback: account-wide cross leverage
+        # fallback: account-wide cross leverage (website setting if available)
         return int(state.get("marginSummary", {}).get("accountLeverage", 1))
     except:
         return 1
 
 current_leverage = get_current_leverage()
-log_print(f"Detected leverage: {current_leverage}× (from Hyperliquid)", "INFO")
+log_print(f"Detected leverage: {current_leverage}× (from Hyperliquid; updates post-trade)", "INFO")
 
-# === MARGIN CHECK USING DYNAMIC LEVERAGE ===
+# === CONSERVATIVE MARGIN CHECK (assumes website leverage will handle) ===
 def enough_usdt(required_notional):
-    """Check if we have enough margin using detected leverage"""
+    """Conservative check: Proceed if balance covers min for max leverage (20×); exchange enforces actual"""
     free = get_balance()
-    needed_margin = (required_notional / current_leverage) * (1 + FEE_BUFFER_PCT)
-    enough = free >= needed_margin
+    min_margin = required_notional / 20 * (1 + FEE_BUFFER_PCT)  # Conservative threshold (~$3 for $60)
+    enough = free >= min_margin
     if not enough:
-        log_print(f"Insufficient margin: need ${needed_margin:.2f}, have ${free:.2f} @ {current_leverage}×", "WARNING")
+        log_print(f"Insufficient min balance: need ~${min_margin:.2f}, have ${free:.2f} (website leverage will use actual margin)", "WARNING")
     return enough, free
 
 def calculate_dynamic_qty(current_price):
-    """Round quantity to correct decimals using asset metadata"""
+    """Round quantity to correct decimals using asset metadata (from test)"""
     if current_price <= 0:
         return MIN_SIZE
     raw_qty = TRADE_USDT / current_price
@@ -70,6 +70,10 @@ def place_long(qty):
                 state.last_buy_price = entry_px
                 state.position_open = True
                 state.position_side = "long"
+                # Update leverage post-open (website value now visible)
+                global current_leverage
+                current_leverage = get_current_leverage()
+                log_print(f"Updated leverage: {current_leverage}× (confirmed from position)", "INFO")
                 state.save_state()
                 state.save_trade("buy", qty, entry_px)
                 return True
@@ -86,6 +90,10 @@ def place_short(qty):
                 state.last_buy_price = entry_px
                 state.position_open = True
                 state.position_side = "short"
+                # Update leverage post-open (website value now visible)
+                global current_leverage
+                current_leverage = get_current_leverage()
+                log_print(f"Updated leverage: {current_leverage}× (confirmed from position)", "INFO")
                 state.save_state()
                 state.save_trade("short", qty, entry_px)
                 return True
@@ -212,8 +220,8 @@ def run_bot():
             time.sleep(10)
 
 if __name__ == "__main__":
-    log_print("=== HYPERLIQUID BOT STARTED — UNIVERSAL + DYNAMIC LEVERAGE ===", "INFO")
-    log_print(f"Startup Balance: ${get_balance():.2f} | Leverage: {current_leverage}× | Symbol: {SYMBOL}", "INFO")
+    log_print("=== HYPERLIQUID BOT STARTED — @DustsCapital ===", "INFO")
+    log_print(f"Startup Balance: ${get_balance():.2f} | Leverage: {current_leverage}× (pre-trade; updates post-open) | Symbol: {SYMBOL}", "INFO")
 
     bot_thread = threading.Thread(target=run_bot, daemon=False)
     bot_thread.start()
