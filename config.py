@@ -31,6 +31,21 @@ PROFIT_RATCHET_ENABLED = True          # ← Turn the whole feature on/off
 MIN_PROFIT_TO_ACTIVATE = 0.10           # $0.20 profit → switch to protection mode
 PROFIT_PROTECTION_FLOOR = 0.05        # Keep 70% of peak profit (e.g., +$0.40 → close if drops below +$0.24)
 
+# ==================== TRAILING STOP CONFIG ====================
+TRAILING_STOP_ENABLED = False   # ← Toggle: True to use Price-based PnL
+TRAILING_STOP_PCT = 0.5        # ← Your 1% trailing stop
+# ==============================================================
+
+# ==================== TRAILING PNL STOP CONFIG ====================
+TRAILING_PNL_ENABLED = False      # ← Toggle: True to use PnL-based instead of price
+TRAILING_PNL_PCT = -2.0          # ← e.g., -2% from peak PnL (negative for loss floor)
+# ==============================================================
+
+# ==================== HARD STOP LOSS CONFIG ====================
+HARD_STOP_LOSS_ENABLED = False   # ← Toggle: True to close if price moves X% against entry
+HARD_STOP_LOSS_PCT = 2.0         # ← e.g., 2.0 = close if down 2% from entry price
+# ==============================================================
+
 
 # How often to log current price in terminal (in seconds)
 PRICE_LOG_INTERVAL = 60   # 300 = 5 minutes (default)
@@ -65,18 +80,3 @@ API_PRIVATE_KEY = os.getenv("HL_PRIVATE_KEY")
 MAIN_WALLET = os.getenv("MAIN_WALLET")
 
 BASE_URL = constants.MAINNET_API_URL
-
-# ==================== HARD STOP LOSS CONFIG ====================
-HARD_STOP_LOSS_ENABLED = False   # ← Toggle: True to close if price moves X% against entry
-HARD_STOP_LOSS_PCT = 2.0         # ← e.g., 2.0 = close if down 2% from entry price
-# ==============================================================
-
-# ==================== TRAILING STOP CONFIG ====================
-TRAILING_STOP_ENABLED = False   # ← Toggle: True to use Price-based PnL
-TRAILING_STOP_PCT = 0.5        # ← Your 1% trailing stop
-# ==============================================================
-
-# ==================== TRAILING PNLP STOP CONFIG ====================
-TRAILING_PNL_ENABLED = False      # ← Toggle: True to use PnL-based instead of price
-TRAILING_PNL_PCT = -2.0          # ← e.g., -2% from peak PnL (negative for loss floor)
-# ==============================================================
