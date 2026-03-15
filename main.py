@@ -162,6 +162,16 @@ def run_bot():
                 log_print(f"Price ${current_price:.3f} │ RSI {rsi_val:.1f} │ Balance: ${get_balance():.2f} │ Pos: {get_position():.4f} {SYMBOL} │ PnL: {pnl_pct:+.1f}% │ {trend_str}")
                 last_price_log = datetime.now(timezone.utc)
 
+            # Hard stop-loss
+            if HARD_STOP_LOSS_ENABLED and state.position_open and state.last_buy_price:
+                if state.position_side == "long":
+                    loss_pct = (state.last_buy_price - current_price) / state.last_buy_price * 100
+                else:
+                    loss_pct = (current_price - state.last_buy_price) / state.last_buy_price * 100
+                if loss_pct >= HARD_STOP_LOSS_PCT:
+                    log_print(f"HARD STOP LOSS HIT — {loss_pct:.2f}% loss (limit: {HARD_STOP_LOSS_PCT}%)", "INFO")
+                    close_position()
+
             # Trailing PnL stop
             if TRAILING_PNL_ENABLED and state.position_open:
                 qty = get_position()

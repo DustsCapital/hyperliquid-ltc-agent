@@ -66,6 +66,11 @@ MAIN_WALLET = os.getenv("MAIN_WALLET")
 
 BASE_URL = constants.MAINNET_API_URL
 
+# ==================== HARD STOP LOSS CONFIG ====================
+HARD_STOP_LOSS_ENABLED = False   # ← Toggle: True to close if price moves X% against entry
+HARD_STOP_LOSS_PCT = 2.0         # ← e.g., 2.0 = close if down 2% from entry price
+# ==============================================================
+
 # ==================== TRAILING STOP CONFIG ====================
 TRAILING_STOP_ENABLED = False   # ← Toggle: True to use Price-based PnL
 TRAILING_STOP_PCT = 0.5        # ← Your 1% trailing stop
